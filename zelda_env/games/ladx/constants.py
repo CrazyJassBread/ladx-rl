@@ -27,7 +27,7 @@ _OBJECT_TYPE_RE = re.compile(r"^\s*DEF\s+(OBJECT_[A-Z0-9_]+)\s+EQU\s+\$([0-9A-Fa
 
 def load_entity_type_names(repo_root: str | Path = ".") -> dict[int, str]:
     """Load LADX entity type names from the disassembly constants file."""
-    constants_path = Path(repo_root) / "src" / "constants" / "entities.asm"
+    constants_path = _source_root(repo_root) / "constants" / "entities.asm"
     if not constants_path.exists():
         return {}
 
@@ -55,7 +55,7 @@ def load_object_type_names(repo_root: str | Path = ".") -> dict[int, str]:
     contexts. When multiple constants share an ID, keep the first readable name
     and let callers treat it as a best-effort label rather than a unique type.
     """
-    constants_path = Path(repo_root) / "src" / "constants" / "gfx.asm"
+    constants_path = _source_root(repo_root) / "constants" / "gfx.asm"
     if not constants_path.exists():
         return {}
 
@@ -67,3 +67,10 @@ def load_object_type_names(repo_root: str | Path = ".") -> dict[int, str]:
         name, value_hex = match.groups()
         names.setdefault(int(value_hex, 16), name)
     return names
+
+
+def _source_root(repo_root: str | Path) -> Path:
+    """Accept either the research-project root or the disassembly root."""
+    root = Path(repo_root)
+    direct = root / "src"
+    return direct if direct.exists() else root / "ladx-disassembly" / "src"

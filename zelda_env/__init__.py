@@ -2,5 +2,12 @@
 
 from zelda_env.env import ZeldaEnv
 
-__all__ = ["ZeldaEnv"]
+try:
+    from gymnasium.envs.registration import register, registry
 
+    if "Zelda-LADX-v0" not in registry:
+        register(id="Zelda-LADX-v0", entry_point="zelda_env.env:ZeldaEnv")
+except ImportError:  # optional dependency
+    pass
+
+__all__ = ["ZeldaEnv"]

@@ -37,6 +37,11 @@ class PyBoyBackend:
         except ImportError as exc:
             raise RuntimeError("PyBoy is required for PyBoyBackend. Install with `pip install pyboy`.") from exc
 
+        rom_path = Path(rom_path)
+        if not rom_path.is_file():
+            raise FileNotFoundError(f"LADX ROM not found: {rom_path}. Run `make rom` first.")
+        if sym_path is not None and not Path(sym_path).is_file():
+            raise FileNotFoundError(f"LADX symbol file not found: {sym_path}. Run `make rom` first.")
         kwargs = {"window": window}
         if sym_path is not None:
             kwargs["symbols"] = str(sym_path)
@@ -49,7 +54,10 @@ class PyBoyBackend:
         self.release_all()
 
     def close(self) -> None:
-        self.pyboy.stop()
+        try:
+            self.pyboy.stop(save=False)
+        except TypeError:  # PyBoy < 2.6
+            self.pyboy.stop()
 
     def press(self, buttons: set[str] | frozenset[str]) -> None:
         self.release_all()
@@ -101,4 +109,3 @@ class PyBoyBackend:
             return self._BUTTON_MAP[button]
         except KeyError as exc:
             raise ValueError(f"Unsupported Game Boy button: {button}") from exc
-

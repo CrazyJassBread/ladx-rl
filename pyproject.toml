@@ -16,6 +16,18 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=8.0"]
+train = [
+  "PyYAML>=6.0",
+  "stable-baselines3>=2.4",
+  "tensorboard>=2.18",
+]
+
+[project.scripts]
+zelda-validate = "scripts.validate_env:main"
+zelda-train = "scripts.train:main"
 
 [tool.setuptools.packages.find]
-include = ["zelda_env*"]
+include = ["zelda_env*", "scripts*", "training*"]
+
+[tool.pytest.ini_options]
+markers = ["rom: requires the locally built LADX ROM and PyBoy"]

@@ -66,6 +66,8 @@ class SymbolTable:
 
 def default_ladx_symbol_table(repo_root: str | Path = ".") -> SymbolTable:
     root = Path(repo_root)
+    if not (root / "src").exists() and (root / "ladx-disassembly" / "src").exists():
+        root = root / "ladx-disassembly"
     sym_path = root / "azle.sym"
     if sym_path.exists():
         return SymbolTable.from_sym_file(sym_path)

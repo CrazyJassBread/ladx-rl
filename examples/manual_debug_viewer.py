@@ -497,10 +497,10 @@ def _room_grid(objects_runtime: list[int]) -> list[list[str]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run LADX in PyBoy with live semantic debug windows.")
-    parser.add_argument("--rom-path", default="azle.gbc")
-    parser.add_argument("--sym-path", default="azle.sym")
+    parser.add_argument("--rom-path", default="ladx-disassembly/azle.gbc")
+    parser.add_argument("--sym-path", default="ladx-disassembly/azle.sym")
     parser.add_argument("--initial-state-path")
-    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--repo-root", default="ladx-disassembly")
     parser.add_argument("--window", default="SDL2", help="PyBoy window backend, usually SDL2.")
     parser.add_argument("--speed", type=float, default=1.0, help="PyBoy emulation speed multiplier.")
     parser.add_argument(

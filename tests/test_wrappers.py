@@ -14,7 +14,7 @@ class DummyEnv:
         pass
 
 
-def test_info_state_recorder_compact_mode_uses_v2_state(tmp_path):
+def test_info_state_recorder_compact_mode_uses_semantic_state(tmp_path):
     path = tmp_path / "runs" / "trace.jsonl"
     env = InfoStateRecorder(DummyEnv(), path, state_mode="compact")
 
@@ -33,7 +33,7 @@ def test_info_state_recorder_compact_mode_uses_v2_state(tmp_path):
 
 def _state():
     return {
-        "meta": {"schema_version": 2},
+        "meta": {"schema_version": 3},
         "map": {"location": {"room": 0x92}, "object_summary": [{"hex": "04", "count": 3}]},
         "sprites": {
             "player": {"type_name": "LINK", "x": 1, "y": 2},

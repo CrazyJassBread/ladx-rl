@@ -7,11 +7,9 @@ from dataclasses import dataclass
 
 ButtonSet = frozenset[str]
 
-
 @dataclass(frozen=True)
 class ActionSpec:
     """A stable logical action mapped to one or more platform buttons."""
-
     name: str
     buttons: ButtonSet
 

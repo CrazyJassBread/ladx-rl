@@ -17,6 +17,9 @@ DumpBanks
 __pycache__/
 *.egg-info/
 .pytest_cache/
+runs/
+artifacts/
+checkpoints/
 
 # local emulator captures
 screenshots/*.png

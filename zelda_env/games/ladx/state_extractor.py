@@ -17,21 +17,36 @@ from zelda_env.games.ladx.constants import (
 from zelda_env.games.ladx.symbols import SymbolTable, default_ladx_symbol_table
 
 
+STATE_MODES = frozenset({"minimal", "reward", "debug", "full"})
+
+
 class LadxStateExtractor:
     """Maps LADX-specific memory symbols into the shared Zelda state schema."""
 
-    def __init__(self, symbols: SymbolTable | None = None, *, repo_root: str | Path = ".") -> None:
+    def __init__(
+        self,
+        symbols: SymbolTable | None = None,
+        *,
+        repo_root: str | Path = ".",
+        state_mode: str = "reward",
+        include_legacy_aliases: bool = False,
+    ) -> None:
+        if state_mode not in STATE_MODES:
+            raise ValueError(f"state_mode must be one of {sorted(STATE_MODES)}")
         self.symbols = symbols or default_ladx_symbol_table(repo_root)
         self.entity_type_names = load_entity_type_names(repo_root)
         self.object_type_names = load_object_type_names(repo_root)
+        self.state_mode = state_mode
+        self.include_legacy_aliases = include_legacy_aliases
 
     def extract(self, backend: EmulatorBackend) -> dict[str, Any]:
-        state: dict[str, Any] = {
+        working: dict[str, Any] = {
             "meta": {
                 "game": "ladx",
                 "platform": "gbc",
                 "backend": backend.__class__.__name__,
-                "schema_version": 2,
+                "schema_version": 3,
+                "state_mode": self.state_mode,
             },
             "map": {},
             "sprites": {},
@@ -45,17 +60,38 @@ class LadxStateExtractor:
             "flags": {},
             "raw": {},
         }
-        self._read_fields(backend, state["meta"], memory_map.META_FIELDS)
-        self._read_fields(backend, state["world"], memory_map.WORLD_FIELDS)
-        self._read_fields(backend, state["player"], memory_map.PLAYER_FIELDS)
-        self._read_fields(backend, state["inventory"], memory_map.INVENTORY_FIELDS)
-        self._read_fields(backend, state["progress"], memory_map.PROGRESS_FIELDS)
-        self._read_fields(backend, state["effects"], memory_map.EFFECT_FIELDS)
-        self._read_inventory_items(backend, state["inventory"])
-        self._read_progress_items(backend, state["progress"])
-        self._read_entities(backend, state["entities"], state["raw"])
-        self._read_room(backend, state["room"])
-        self._build_reward_schema(state)
+        self._read_fields(backend, working["meta"], memory_map.META_FIELDS)
+        self._read_fields(backend, working["world"], memory_map.WORLD_FIELDS)
+        self._read_fields(backend, working["player"], memory_map.PLAYER_FIELDS)
+        self._read_fields(backend, working["inventory"], memory_map.INVENTORY_FIELDS)
+        self._read_fields(backend, working["progress"], memory_map.PROGRESS_FIELDS)
+        self._read_fields(backend, working["effects"], memory_map.EFFECT_FIELDS)
+        self._read_inventory_items(backend, working["inventory"])
+        self._read_progress_items(backend, working["progress"])
+        if self.state_mode != "minimal":
+            self._read_entities(backend, working["entities"], working["raw"])
+        if self.state_mode in {"debug", "full"}:
+            self._read_room(backend, working["room"])
+        self._build_reward_schema(working)
+
+        state = {
+            "meta": working["meta"],
+            "map": working["map"],
+            "sprites": working["sprites"],
+            "progress": working["progress"],
+            "effects": working["effects"],
+            "flags": working["flags"],
+        }
+        if self.state_mode == "full":
+            state["raw"] = working["raw"]
+        if self.include_legacy_aliases:
+            state.update(
+                world=working["world"],
+                player=working["player"],
+                inventory=working["inventory"],
+                entities=working["entities"],
+                room=working["room"],
+            )
         return state
 
     def _read_fields(self, backend: EmulatorBackend, target: dict[str, Any], fields: tuple[memory_map.Field, ...]) -> None:

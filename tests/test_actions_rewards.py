@@ -8,12 +8,14 @@ def test_buttons_for_action_uses_logical_buttons():
 
 
 def test_default_progress_reward_uses_generic_state_paths():
-    prev = {"state": {"world": {"is_indoor": 0, "map_id": 0, "room": 1}, "player": {"health": {"current": 16}}}}
-    info = {"state": {"world": {"is_indoor": 0, "map_id": 0, "room": 2}, "player": {"health": {"current": 8}}}}
+    prev = {"state": {}}
+    info = {"events": [
+        {"type": "new_room_visited", "data": {}},
+        {"type": "player_damaged", "data": {"amount": 8}},
+    ]}
 
     reward, terms = default_progress_reward(prev, info, 0)
 
-    assert terms["new_room"] > 0
-    assert terms["damage"] < 0
-    assert reward < terms["new_room"]
-
+    assert terms["new_room_visited"] > 0
+    assert terms["player_damaged"] < 0
+    assert reward < terms["new_room_visited"]

@@ -1,0 +1,4 @@
+frame_skip: 4
+state_mode: reward
+include_state_delta: false
+initial_state_path: save_states/azle.gbc.start.state

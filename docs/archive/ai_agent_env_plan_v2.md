@@ -1,4 +1,7 @@
-# 2D Zelda AI Agent 环境需求细化与实施计划
+# 2D Zelda AI Agent 环境需求细化与实施计划（历史设计记录）
+
+> 当前实现以根目录 README、`docs/state_schema.md`、`docs/events.md` 和
+> `docs/training.md` 为准。下文保留早期路径与 schema v2 设计背景。
 
 ## 目标
 

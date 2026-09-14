@@ -1,5 +1,14 @@
 # Work Log
 
+## 2026-08-26
+
+- Isolated the complete byte-exact disassembly under `ladx-disassembly/` and added root orchestration targets.
+- Promoted semantic state to schema v3 with explicit `minimal`, `reward`, `debug`, and `full` modes; legacy aliases are opt-in.
+- Added state deltas, LADX event detection, event-based rewards, task termination, Gym registration, configs, training baseline, state manifests, and memory inspection tools.
+- Renamed the previously modified root emulator state to `save_states/azle.gbc.overworld.b3.state` without changing its contents.
+- Verified every preserved ROM revision with `test-all`, the English ROM MD5, unit tests, deterministic replay, Gymnasium validation, and a real 1000-step PyBoy rollout.
+- Removed generated multi-revision ROM artifacts, emulator RAM/cache files, empty test scaffolding, and the unused transition-record draft; archived the superseded schema-v2 plan.
+
 ## 2026-06-15
 
 - Built out the LADX-based `zelda_env` work on branch `codex-add-zelda-env`; latest pushed commits are `552c30fa` and `2c5cd5a6`.
@@ -8,7 +17,7 @@
 - Added best-effort `OBJECT_*` name parsing, sprite categories, compact state recording via `InfoStateRecorder(state_mode="compact")`, and tests for the wrapper.
 - Moved reusable save states into `save_states/`, deleted tracked screenshots, and ignored future `screenshots/*.png`.
 - Added `AGENTS.md`: this repo is a working base for a new Zelda RL/debug environment, not upstream LADX work; do not create PRs unless explicitly requested.
-- Updated docs: `docs/state_schema.md`, `docs/zelda_env_readme.md`, and `docs/ai_agent_env_plan.md` now reflect schema v2, save state layout, and completed/backlog phases.
+- Updated docs: `docs/state_schema.md`, `docs/zelda_env_readme.md`, and the now-archived `docs/archive/ai_agent_env_plan_v2.md` reflect the schema-v2 work completed at that time.
 
 Next likely work:
 

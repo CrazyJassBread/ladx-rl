@@ -70,14 +70,14 @@ class InfoStateRecorder:
         formatted["info"] = dict(info)
         state = info.get("state")
         if isinstance(state, dict):
-            formatted["info"]["state"] = compact_v2_state(state)
+            formatted["info"]["state"] = compact_state(state)
         return formatted
 
 
-def compact_v2_state(state: dict[str, Any]) -> dict[str, Any]:
+def compact_state(state: dict[str, Any]) -> dict[str, Any]:
     """Return a smaller reward/debug-oriented state snapshot.
 
-    The compact form keeps the v2 `map` and `sprites` shape but drops raw memory
+    The compact form keeps the v3 `map` and `sprites` shape but drops raw memory
     tables and disabled sprite slots, which keeps JSONL trajectories manageable.
     """
 
@@ -100,6 +100,9 @@ def compact_v2_state(state: dict[str, Any]) -> dict[str, Any]:
         "progress": state.get("progress", {}),
         "effects": state.get("effects", {}),
     }
+
+
+compact_v2_state = compact_state
 
 
 def _compact_entity(entity: dict[str, Any]) -> dict[str, Any]:

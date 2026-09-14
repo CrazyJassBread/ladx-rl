@@ -1,6 +1,6 @@
 version: 2
 jobs:
-  build:
+  disassembly:
     docker:
       - image: ghcr.io/gbdev/rgbds:v1.0.1
     steps:
@@ -10,7 +10,24 @@ jobs:
           command: apt-get update && apt-get --yes install python3-minimal
       - run:
           name: Building
-          command: make build-all
+          command: make -C ladx-disassembly build-all
       - run:
           name: Testing checksum
-          command: make test-all
+          command: make -C ladx-disassembly test-all
+  python-unit:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run:
+          name: Install environment test dependencies
+          command: python -m pip install -e '.[test]'
+      - run:
+          name: Test semantic state and event layers
+          command: python -m pytest -m "not rom" -q
+
+workflows:
+  build-and-test:
+    jobs:
+      - disassembly
+      - python-unit

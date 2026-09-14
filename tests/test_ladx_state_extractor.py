@@ -42,7 +42,8 @@ class FakeBackend:
 
 
 def test_ladx_state_extractor_returns_generic_json_safe_schema():
-    symbols = default_ladx_symbol_table(Path(__file__).parents[1])
+    root = Path(__file__).parents[1]
+    symbols = default_ladx_symbol_table(root)
     backend = FakeBackend()
     backend.memory[symbols.resolve("hLinkPositionX")] = 42
     backend.memory[symbols.resolve("hLinkPositionY")] = 99
@@ -57,30 +58,28 @@ def test_ladx_state_extractor_returns_generic_json_safe_schema():
     backend.memory[symbols.resolve("wEntitiesPosXTable")] = 80
     backend.memory[symbols.resolve("wEntitiesPosYTable")] = 64
 
-    state = LadxStateExtractor(symbols).extract(backend)
+    state = LadxStateExtractor(symbols, repo_root=root).extract(backend)
     json.dumps(state)
 
     assert state["meta"]["game"] == "ladx"
-    assert state["meta"]["schema_version"] == 2
+    assert state["meta"]["schema_version"] == 3
     assert state["map"]["location"]["room"] == 0x92
     assert state["sprites"]["player"]["x"] == 42
     assert state["sprites"]["player"]["inventory"]["b_button_item"] == 1
     assert state["sprites"]["slots"]["slot_00"]["type"] == 9
     assert state["sprites"]["slots"]["slot_00"]["category"] == "enemy"
     assert state["sprites"]["active"][0]["type_name"] == "ENTITY_OCTOROK"
-    assert state["world"]["room"] == 0x92
-    assert state["player"]["x"] == 42
-    assert state["player"]["y"] == 99
-    assert state["player"]["health"]["current"] == 0x18
-    assert state["player"]["magic"]["current"] is None
-    assert state["inventory"]["b_button_item"] == 1
-    assert state["inventory"]["a_button_item"] == 4
-    assert state["entities"][0]["enabled"] is True
-    assert state["entities"][0]["status_name"] == "ENTITY_STATUS_ACTIVE"
-    assert state["entities"][0]["type"] == 9
-    assert state["entities"][0]["type_name"] == "ENTITY_OCTOROK"
-    assert state["entities"][0]["x"] == 80
-    assert state["entities"][0]["y"] == 64
+    assert state["sprites"]["player"]["health"]["current"] == 0x18
+    assert "world" not in state
+    assert "raw" not in state
+
+
+def test_full_mode_and_legacy_aliases_are_opt_in():
+    root = Path(__file__).parents[1]
+    symbols = default_ladx_symbol_table(root)
+    state = LadxStateExtractor(
+        symbols, repo_root=root, state_mode="full", include_legacy_aliases=True
+    ).extract(FakeBackend())
+    assert state["world"] is state["map"]["location"]
     assert len(state["entities"]) == 0x10
-    assert state["raw"]["entity_tables"]["status"][0] == 5
-    assert state["raw"]["entity_tables"]["type"][0] == 9
+    assert "entity_tables" in state["raw"]

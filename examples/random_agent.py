@@ -10,7 +10,7 @@ from zelda_env.rewards import default_progress_reward
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("rom_path")
+    parser.add_argument("--rom-path")
     parser.add_argument("--sym-path")
     parser.add_argument("--initial-state-path")
     parser.add_argument("--steps", type=int, default=1000)
@@ -38,4 +38,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

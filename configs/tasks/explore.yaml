@@ -1,0 +1,8 @@
+id: explore
+max_steps: 4500
+success_events: []
+failure_events: [player_died]
+reward_events:
+  new_room_visited: 0.05
+  player_damaged: -0.02
+  player_died: -1.0

@@ -1,0 +1,7 @@
+{
+  "rom_md5": "07c211479386825042efb4ad31bb525f",
+  "states": [
+    {"id": "start", "path": "save_states/azle.gbc.start.state", "sha256": "86657ae9f0a4cf7ef2db41ba861aeb9e9167f9cb9ca276c90199e27bcb3e7f24"},
+    {"id": "overworld_b3", "path": "save_states/azle.gbc.overworld.b3.state", "sha256": "76911edcf138cc7524cfcaf0b31fc1d44d87bcb71ba23841a539ec51f26b4074"}
+  ]
+}

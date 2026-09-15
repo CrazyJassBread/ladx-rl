@@ -1,5 +1,0 @@
-algorithm: ppo
-total_timesteps: 100000
-seed: 0
-policy: CnnPolicy
-output: artifacts/ppo_ladx

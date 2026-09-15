@@ -1,12 +1,7 @@
-from zelda_env.backends.base import EmulatorBackend
+from zelda_env.emulator import Emulator
 
 
 class ContractBackend:
-    platform = "test"
-    buttons = ("A",)
-
-    def reset(self): ...
-
     def close(self): ...
 
     def press(self, buttons): ...
@@ -18,9 +13,6 @@ class ContractBackend:
     def read_u8(self, address):
         return 0
 
-    def read_u16(self, address, *, endian="little"):
-        return 0
-
     def read_bytes(self, address, length):
         return bytes(length)
 
@@ -29,10 +21,9 @@ class ContractBackend:
 
     def load_state(self, data): ...
 
-    def screen_rgb(self):
+    def get_frame(self):
         return None
 
 
-def test_backend_protocol_accepts_contract_backend():
-    assert isinstance(ContractBackend(), EmulatorBackend)
-
+def test_emulator_protocol_accepts_contract_emulator():
+    assert isinstance(ContractBackend(), Emulator)

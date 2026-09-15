@@ -1,0 +1,138 @@
+# The first Tail Cave skill-transfer benchmark.
+# Room tuples are (is_indoor, map_id, room_id), all in decimal TOML values.
+
+[defaults]
+frame_skip = 4
+max_episode_steps = 2500
+total_timesteps = 1000000
+action_names = [
+  "NOOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B",
+  "UP_A", "DOWN_A", "LEFT_A", "RIGHT_A",
+  "UP_B", "DOWN_B", "LEFT_B", "RIGHT_B",
+]
+
+[ppo]
+policy = "CnnPolicy"
+n_steps = 512
+batch_size = 128
+n_epochs = 4
+learning_rate = 0.00025
+gamma = 0.99
+gae_lambda = 0.95
+clip_range = 0.1
+ent_coef = 0.01
+vf_coef = 0.5
+max_grad_norm = 0.5
+frame_stack = 4
+eval_freq = 25000
+checkpoint_freq = 100000
+eval_episodes = 20
+
+# A/B: complete room 0x16 task, with and without reset-time variation.
+[instances.room16_key_fixed]
+states = ["save_states/azle.gbc.tail_cave.r2.state"]
+expected_room = [1, 0, 22]
+noop_frames = [0, 0]
+
+[instances.room16_key_fixed.task]
+kind = "kill_and_collect"
+target_types = [32]
+drop_type = 48
+
+[instances.room16_key_train]
+states = ["save_states/azle.gbc.tail_cave.r2.state"]
+expected_room = [1, 0, 22]
+noop_frames = [0, 15]
+
+[instances.room16_key_train.task]
+kind = "kill_and_collect"
+target_types = [32]
+drop_type = 48
+
+[instances.room16_key_eval]
+states = ["save_states/azle.gbc.tail_cave.r2.state"]
+expected_room = [1, 0, 22]
+noop_frames = [16, 30]
+
+[instances.room16_key_eval.task]
+kind = "kill_and_collect"
+target_types = [32]
+drop_type = 48
+
+# C/E: the Hardhat-removal skill, independent of the room's follow-up effect.
+[instances.room16_hardhats]
+states = ["save_states/azle.gbc.tail_cave.r2.state"]
+expected_room = [1, 0, 22]
+noop_frames = [0, 15]
+
+[instances.room16_hardhats.task]
+kind = "defeat_entities"
+target_types = [32]
+
+[instances.room09_hardhat_train]
+states = ["save_states/azle.gbc.tail_cave.r11.state"]
+expected_room = [1, 0, 9]
+noop_frames = [0, 15]
+
+[instances.room09_hardhat_train.task]
+kind = "defeat_entities"
+target_types = [32]
+
+[instances.room09_hardhat_eval]
+states = ["save_states/azle.gbc.tail_cave.r27.state"]
+expected_room = [1, 0, 9]
+noop_frames = [16, 30]
+
+[instances.room09_hardhat_eval.task]
+kind = "defeat_entities"
+target_types = [32]
+
+# D: train on two kill-all rooms and hold out a third room and enemy mechanic.
+[instances.room12_keese]
+states = ["save_states/azle.gbc.tail_cave.r5.state"]
+expected_room = [1, 0, 18]
+noop_frames = [0, 15]
+
+[instances.room12_keese.task]
+kind = "defeat_entities"
+target_types = [25]
+
+[instances.room03_spiked_beetles]
+states = ["save_states/azle.gbc.tail_cave.r16.state"]
+expected_room = [1, 0, 3]
+noop_frames = [16, 30]
+
+[instances.room03_spiked_beetles.task]
+kind = "defeat_entities"
+target_types = [44]
+
+[experiments.A]
+description = "Sanity check: learn and evaluate the full r2 task from one fixed state."
+train = ["room16_key_fixed"]
+eval = ["room16_key_fixed"]
+total_timesteps = 1000000
+
+[experiments.B]
+description = "Same-room temporal generalization with disjoint reset jitter ranges."
+train = ["room16_key_train"]
+eval = ["room16_key_eval"]
+total_timesteps = 1000000
+
+[experiments.C]
+description = "Zero-shot Hardhat skill transfer from room 0x16 to room 0x09."
+train = ["room16_hardhats"]
+eval = ["room09_hardhat_eval"]
+total_timesteps = 1000000
+
+[experiments.D]
+description = "Multi-room kill-all training with an unseen room and enemy type held out."
+train = ["room16_hardhats", "room12_keese"]
+eval = ["room03_spiked_beetles"]
+total_timesteps = 2000000
+
+[experiments.E]
+description = "Fine-tune C on room 0x09 and compare against a scratch run on the same split."
+train = ["room09_hardhat_train"]
+eval = ["room09_hardhat_eval"]
+pretrained_from = "C"
+total_timesteps = 500000

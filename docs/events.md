@@ -1,7 +1,31 @@
-# State Deltas and Game Events
+# Events and rewards
 
-Each action advances PyBoy by `frame_skip` frames. The environment extracts semantic state, computes a leaf-level `StateDelta`, then passes both states to `LadxEventDetector`. Events contain `type`, `frame`, `data`, `source_paths`, and `confidence`.
+Events are ordinary comparisons between the previous and current
+`game_state`. `zelda_env/events.py` currently detects:
 
-Mapped events cover rooms, damage/healing/death, rupees and keys, heart pieces, instruments, inventory slots, entity spawn/damage/despawn/defeat, and room status. Entity identity combines slot, type, load order, and a detector-side generation. Despawn/defeat confidence is lower because RAM cannot always distinguish a kill from scripted removal.
+- room changes and first visits;
+- player damage, healing and death;
+- inventory, small-key, dungeon-key and instrument acquisition;
+- event-flag changes;
+- entity spawn, removal and damage;
+- monster damage and defeat within the same room.
 
-`EventReward` and `TaskSpec` consume these names. Address-specific interpretation stays under `zelda_env/games/ladx/`. When adding an event, add a synthetic delta test and validate it from a named save state before assigning reward.
+Every event is a JSON-safe dictionary:
+
+```python
+{"type": "player_damaged", "frame": 42, "data": {"amount": 8}}
+```
+
+`EVENT_REWARDS` is the small default event-to-reward table. Real experiments
+can pass a replacement function:
+
+```python
+def reward(previous_state, current_state, events):
+    return sum(1.0 for event in events if event["type"] == "monster_defeated")
+
+env = ZeldaEnv(reward_fn=reward)
+```
+
+Memory-address discovery does not run during training. The snapshot/diff tools
+under `zelda_env/utils/` help locate candidate addresses, which should be
+verified and then added to `zelda_env/memory.py`.

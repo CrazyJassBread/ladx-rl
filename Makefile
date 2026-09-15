@@ -1,4 +1,4 @@
-.PHONY: build rom rom-test unit test env-test validate clean-rom
+.PHONY: build rom rom-test unit test env-test validate clean-cache clean-rom
 
 LADX_DIR := ladx-disassembly
 PYTHON ?= python
@@ -23,6 +23,10 @@ env-test: rom rom-test
 validate: rom rom-test
 	$(PYTHON) scripts/verify_states.py
 	$(PYTHON) scripts/validate_env.py
+
+clean-cache:
+	rm -rf .pytest_cache zelda_env.egg-info
+	find zelda_env training scripts examples tests -type d -name __pycache__ -prune -exec rm -rf {} +
 
 clean-rom:
 	$(MAKE) -C $(LADX_DIR) clean

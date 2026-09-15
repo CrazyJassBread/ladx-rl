@@ -12,7 +12,7 @@ DumpBanks
 *.sym
 *.map
 
-# precompiled python
+# Python caches and local experiment output
 *.pyc
 __pycache__/
 *.egg-info/
@@ -65,3 +65,7 @@ screenshots/*.png
 *.sn7
 *.sn8
 *.sn9
+
+
+# local editor settings
+.vscode/

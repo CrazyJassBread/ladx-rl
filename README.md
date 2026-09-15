@@ -1,61 +1,88 @@
-# Zelda RL Research Environment
+# Zelda LADX RL Environment
 
-This repository combines a preserved Link's Awakening DX disassembly with a
-Gymnasium environment for memory-grounded reinforcement-learning research.
+This repository combines the LADX disassembly with a small Gymnasium
+environment. `ladx-disassembly/` builds the ROM and `zelda_env/` controls it
+through PyBoy.
 
-The project has three explicit layers:
+The active project layout is intentionally small:
 
-- `ladx-disassembly/` builds the byte-exact English LADX ROM and symbol table.
-- `zelda_env/` turns the ROM into a deterministic Gymnasium environment and
-  maps emulator memory to semantic state and game events.
-- `training/`, `configs/`, and `scripts/` contain experiment-facing tools.
+- `zelda_env/`: emulator adapter, Gymnasium environment, memory state and tasks;
+- `configs/experiments/`: room/state splits and PPO settings;
+- `training/` and `scripts/`: environment construction, training and evaluation;
+- `examples/`: random and keyboard-controlled visual tests;
+- `save_states/`: reproducible task starting points;
+- `ladx-disassembly/`: upstream game source, build assets and generated ROM symbols.
 
 ## Quick start
 
 ```bash
 conda activate zelda
 make rom
-make rom-test
 python -m pytest -q
 python scripts/validate_env.py
 ```
 
-The ROM checksum must be `07c211479386825042efb4ad31bb525f`.
-Generated ROMs are local artifacts and are not committed.
+Use `make clean-cache` to remove Python/test caches without deleting ROMs,
+save states, or experiment results.
 
-## Run the environment
+The generated ROM must have MD5 `07c211479386825042efb4ad31bb525f`.
 
 ```python
 from zelda_env import ZeldaEnv
 
 env = ZeldaEnv(
     initial_state_path="save_states/azle.gbc.start.state",
-    state_mode="reward",
+    frame_skip=4,
     max_episode_steps=4_500,
 )
+
 observation, info = env.reset(seed=0)
-observation, reward, terminated, truncated, info = env.step(0)
+observation, reward, terminated, truncated, info = env.step(1)
+
+game_state = info["game_state"]
+print(game_state["room"], game_state["player"], game_state["monsters"])
 env.close()
 ```
 
-The policy observes pixels. Semantic memory state, state changes, detected game
-events, and decomposed rewards are returned through `info`.
+Observations are RGB pixels with shape `(144, 160, 3)`. Room, player,
+inventory, event flags and active entity data are read from memory using
+`ladx-disassembly/azle.sym` and returned in `info["game_state"]`.
 
-## Disassembly
+See `docs/zelda_env_readme.md` for the complete API and
+`ladx-disassembly/README.md` for disassembly build documentation.
 
-The complete upstream-style disassembly remains independently buildable:
+To visually run a random policy from Tail Cave room 1:
 
 ```bash
-make -C ladx-disassembly build
-make -C ladx-disassembly test
+python examples/random_agent.py
 ```
 
-See [the preserved disassembly README](ladx-disassembly/README.md) for its
-original build documentation.
+The window shows the live game frame on the left and the current `info` fields
+in a scrollable panel on the right. Close the window or press `Ctrl-C` to stop.
 
-## Documentation
+For manual play with the same live info panel:
 
-- `docs/zelda_env_readme.md`: environment usage
-- `docs/state_schema.md`: semantic state schema
-- `docs/events.md`: state-delta and game-event model
-- `docs/training.md`: task and training conventions
+```bash
+python examples/human_play.py
+```
+
+Use the arrow keys to move, `Z` for A, `X` for B, `Enter` for START,
+`Backspace` for SELECT, and `Esc` to quit.
+
+## Tail Cave PPO experiments
+
+The A–E transfer suite trains from pixels while using RAM only for task rewards
+and evaluation:
+
+```bash
+python -m pip install -e '.[train]'
+python scripts/train.py --list
+python scripts/train.py --experiment A --check
+python scripts/train.py --experiment A
+python scripts/evaluate.py artifacts/tail_cave/A/best_model.zip --experiment A
+```
+
+Experiment definitions are in
+`configs/experiments/tail_cave_transfer.toml`. See `docs/training.md` for the
+room splits, zero-shot protocol, and pretrained-versus-scratch fine-tuning
+commands.

@@ -1,18 +1,52 @@
-# Semantic State Schema v3
+# Game state
 
-The policy observation is a `144 × 160 × 3` RGB frame. Memory-derived state is returned separately as `info["state"]`, so privileged RAM data does not silently become policy input.
+Pixel observations and privileged memory state are deliberately separate. The
+agent receives a `(144, 160, 3)` RGB image; memory state is returned through
+`info["game_state"]` for rewards and debugging.
 
-Stable top-level keys are `meta`, `map`, `sprites`, `progress`, `effects`, and `flags`. `sprites.player.inventory` owns inventory data. Entity slots are exposed as `sprites.slots.slot_00` through `slot_0F`, with convenience views in `sprites.active` and `sprites.by_category`.
+```python
+{
+    "frame": 42,
+    "room": {
+        "id": 0x92,
+        "map_id": 0,
+        "indoor_room": 0,
+        "is_indoor": 0,
+        "is_side_scrolling": 0,
+    },
+    "player": {
+        "x": 110,
+        "y": 72,
+        "z": 0,
+        "direction": 2,
+        "health": 24,
+        "max_hearts": 3,
+    },
+    "inventory": {
+        "items": [...],
+        "tail_key": 0,
+        "angler_key": 0,
+        "face_key": 0,
+        "bird_key": 0,
+        "instruments": [...],
+        ...
+    },
+    "progress": {...},
+    "event_flags": {...},
+    "entities": [...],
+    "monsters": [...],
+}
+```
 
-| Mode | Content | Intended use |
-|---|---|---|
-| `minimal` | player, location, progress | high-throughput experiments |
-| `reward` | minimal plus entity slots | default rewards/events |
-| `debug` | reward plus decoded room objects | memory-map development |
-| `full` | debug plus raw entity tables | offline inspection only |
+`entities` contains every active runtime entity slot. Each entry includes
+`slot`, `status`, `type`, `x`, `y`, `z`, `health`, `direction`, and `room_id`.
+`monsters` is a best-effort subset containing active entities with non-zero
+health; `entities` is authoritative because some NPCs and special objects also
+use that byte.
 
-Legacy `world`, `player`, `inventory`, `entities`, and `room` aliases are only included with `include_legacy_aliases=True`.
+All mappings live in `zelda_env/memory.py` as simple semantic-name-to-symbol
+dictionaries. Raw addresses are never duplicated in reward or event code.
 
-Key mappings include `map.location.room ← hMapRoom`, `sprites.player.health.current ← wHealth`, `sprites.player.x/y ← hLinkPositionX/Y`, `sprites.player.inventory.items ← wInventoryItems`, and `sprites.slots.slot_XX.* ← wEntities*Table[slot]`.
-
-Addresses come from `ladx-disassembly/azle.sym`; readable entity names come from `ladx-disassembly/src/constants/entities.asm`. Reward code consumes semantic paths/events and must not embed addresses.
+The static reference sheets under `docs/references/ladx/` are retained for
+manual room and entity identification; runtime task logic must still use RAM
+symbols and entity IDs rather than image coordinates from those sheets.

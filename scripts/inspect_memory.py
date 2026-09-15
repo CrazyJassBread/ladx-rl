@@ -9,12 +9,11 @@ from zelda_env import ZeldaEnv
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("state")
-    parser.add_argument("--mode", choices=("minimal", "reward", "debug", "full"), default="debug")
     args = parser.parse_args()
-    env = ZeldaEnv(initial_state_path=args.state, state_mode=args.mode)
+    env = ZeldaEnv(initial_state_path=args.state)
     try:
         _, info = env.reset()
-        print(json.dumps(info["state"], indent=2, sort_keys=True))
+        print(json.dumps(info["game_state"], indent=2, sort_keys=True))
     finally:
         env.close()
     return 0

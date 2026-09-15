@@ -19,8 +19,6 @@ numpy==2.4.6
     #   gymnasium
     #   pyboy
     #   zelda-env
-pillow==12.2.0
-    # via zelda-env
 pyboy==2.7.0
     # via zelda-env
 pysdl2==0.9.17

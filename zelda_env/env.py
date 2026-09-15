@@ -1,7 +1,9 @@
-"""Gymnasium environment for the preserved LADX disassembly build."""
+"""Minimal Gymnasium environment for Link's Awakening DX."""
 
 from __future__ import annotations
 
+from numbers import Integral
+from os import PathLike
 from pathlib import Path
 from typing import Any, Callable
 
@@ -11,117 +13,178 @@ except ImportError:  # pragma: no cover
     gym = None
 
 from zelda_env.actions import DEFAULT_ACTIONS, ActionSpec, buttons_for_action
-from zelda_env.backends.pyboy_backend import PyBoyBackend
-from zelda_env.config import PROJECT_ROOT, LadxPaths
-from zelda_env.games.ladx.event_detector import LadxEventDetector
-from zelda_env.games.ladx.state_extractor import LadxStateExtractor
-from zelda_env.games.ladx.symbols import SymbolTable
-from zelda_env.memory.delta import diff_states
-from zelda_env.rewards import EventReward
-from zelda_env.tasks import TaskSpec
+from zelda_env.emulator import Emulator, PyBoyEmulator
+from zelda_env.events import default_reward, detect_events
+from zelda_env.memory import DEFAULT_ROM_PATH, DEFAULT_SYM_PATH, GameMemory
+from zelda_env.utils.symbol_loader import SymbolTable
 
-RewardFn = Callable[[dict[str, Any] | None, dict[str, Any], int], tuple[float, dict[str, Any]]]
+
+RewardFn = Callable[[dict[str, Any] | None, dict[str, Any], list[dict[str, Any]]], float]
 
 
 class ZeldaEnv(gym.Env if gym is not None else object):
-    """Pixel observations with semantic state, deltas, and events in ``info``."""
+    """Pixel-only LADX environment with memory state returned in ``info``."""
 
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 60}
 
     def __init__(
-        self, *, game: str = "ladx", backend: str = "pyboy",
-        rom_path: str | Path | None = None, sym_path: str | Path | None = None,
-        initial_state_path: str | Path | None = None, render_mode: str | None = None,
-        frame_skip: int = 4, max_episode_steps: int | None = None,
-        reward_fn: RewardFn | None = None, actions: tuple[ActionSpec, ...] = DEFAULT_ACTIONS,
-        project_root: str | Path = PROJECT_ROOT, repo_root: str | Path | None = None,
-        state_mode: str = "reward", include_legacy_aliases: bool = False,
-        include_state_delta: bool = False, require_initial_state: bool = False,
-        task: TaskSpec | None = None,
+        self,
+        *,
+        rom_path: str | Path = DEFAULT_ROM_PATH,
+        sym_path: str | Path = DEFAULT_SYM_PATH,
+        initial_state_path: str | Path | None = None,
+        render_mode: str | None = None,
+        frame_skip: int = 4,
+        max_episode_steps: int | None = None,
+        reward_fn: RewardFn = default_reward,
+        actions: tuple[ActionSpec, ...] = DEFAULT_ACTIONS,
+        emulator: Emulator | None = None,
     ) -> None:
         try:
             import numpy as np
             from gymnasium import spaces
         except ImportError as exc:
             raise RuntimeError("ZeldaEnv requires gymnasium and numpy") from exc
-        if game != "ladx" or backend != "pyboy":
-            raise ValueError(f"Unsupported game/backend: {game}/{backend}")
-        root = Path(repo_root) if repo_root is not None else Path(project_root)
-        paths = LadxPaths.default(root)
-        rom = Path(rom_path) if rom_path is not None else paths.rom_path
-        sym = Path(sym_path) if sym_path is not None else paths.sym_path
-        if require_initial_state and initial_state_path is None:
-            raise ValueError("This configuration requires initial_state_path")
+        if render_mode not in {None, "rgb_array", "human"}:
+            raise ValueError("render_mode must be None, 'rgb_array', or 'human'")
+        if isinstance(frame_skip, bool) or not isinstance(frame_skip, Integral) or frame_skip < 1:
+            raise ValueError("frame_skip must be a positive integer")
+        if max_episode_steps is not None and max_episode_steps < 1:
+            raise ValueError("max_episode_steps must be positive or None")
 
-        self._np, self.game, self.render_mode = np, game, render_mode
-        self.frame_skip, self.max_episode_steps = frame_skip, max_episode_steps
-        self.reward_fn, self.actions = reward_fn or EventReward(), actions
-        self.task, self.include_state_delta = task or TaskSpec(max_steps=max_episode_steps), include_state_delta
+        self.render_mode = render_mode
+        self.frame_skip = int(frame_skip)
+        self.max_episode_steps = max_episode_steps
+        self.reward_fn = reward_fn
+        self.actions = actions
         self.action_space = spaces.Discrete(len(actions))
         self.observation_space = spaces.Box(0, 255, shape=(144, 160, 3), dtype=np.uint8)
-        self.elapsed_steps = 0
-        self._previous_info: dict[str, Any] | None = None
-        self._previous_state: dict[str, Any] | None = None
-        self._initial_state_data = Path(initial_state_path).read_bytes() if initial_state_path else None
-        self.backend = PyBoyBackend(rom, sym_path=sym, window="SDL2" if render_mode == "human" else "null")
-        self.extractor = LadxStateExtractor(
-            SymbolTable.from_sym_file(sym), repo_root=paths.disassembly_root,
-            state_mode=state_mode, include_legacy_aliases=include_legacy_aliases,
+
+        self.emulator = emulator if emulator is not None else PyBoyEmulator(
+            rom_path,
+            sym_path=sym_path,
+            window="SDL2" if render_mode == "human" else "null",
         )
-        self.event_detector = LadxEventDetector()
+        self.symbols = SymbolTable.from_file(sym_path)
+        self.memory = GameMemory(self.emulator, self.symbols)
+        self._initial_state = Path(initial_state_path).read_bytes() if initial_state_path else None
+        self._boot_state = self.emulator.save_state()
+        self._previous_state: dict[str, Any] | None = None
+        self._visited_rooms: set[tuple[int, int, int]] = set()
+        self.elapsed_steps = 0
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
-        if gym is not None:
-            super().reset(seed=seed)
+        super().reset(seed=seed)
         self.elapsed_steps = 0
-        self.backend.reset()
-        state_data = options.get("state") if options and "state" in options else self._initial_state_data
-        if state_data is not None:
-            self.backend.load_state(state_data)
-        state = self.extractor.extract(self.backend)
-        self.event_detector.reset(state)
-        reset_reward = getattr(self.reward_fn, "reset", None)
-        if callable(reset_reward):
-            reset_reward()
-        info = self._make_info(state, events=[], action=None)
-        self._previous_state, self._previous_info = state, info
-        return self.backend.screen_rgb(), info
+        self.emulator.release_all()
 
-    def step(self, action: int):
+        state_data: bytes | bytearray | memoryview | str | PathLike[str] | None = self._initial_state
+        noop_frames = 0
+        if options:
+            state_data = options.get("state", options.get("state_path", state_data))
+            noop_frames = options.get("noop_frames", 0)
+        if isinstance(noop_frames, bool) or not isinstance(noop_frames, Integral) or noop_frames < 0:
+            raise ValueError("noop_frames must be a non-negative integer")
+        self.emulator.load_state(self._state_bytes(state_data if state_data is not None else self._boot_state))
+        if noop_frames:
+            self.emulator.advance(int(noop_frames))
+
+        game_state = self.get_game_state()
+        self._previous_state = game_state
+        self._visited_rooms = {_room_key(game_state)}
+        info = self._info(game_state, [], action=None, num_frames=0)
+        info["reset_noop_frames"] = int(noop_frames)
+        return self.get_frame(), info
+
+    def step(self, action: int, num_frames: int | None = None):
         if not self.action_space.contains(action):
             raise ValueError(f"Invalid action: {action}")
+        frames = self.frame_skip if num_frames is None else num_frames
+        if isinstance(frames, bool) or not isinstance(frames, Integral) or frames < 1:
+            raise ValueError("num_frames must be a positive integer")
+        frames = int(frames)
+        action = int(action)
+
+        self.emulator.press(buttons_for_action(action, self.actions))
+        try:
+            self.emulator.advance(frames)
+        finally:
+            self.emulator.release_all()
+
         self.elapsed_steps += 1
-        self.backend.press(buttons_for_action(int(action), self.actions))
-        self.backend.advance(self.frame_skip)
-        self.backend.release_all()
-        state = self.extractor.extract(self.backend)
-        previous = self._previous_state or state
-        delta = diff_states(previous, state)
-        frame = int(state.get("meta", {}).get("frame", self.elapsed_steps))
-        event_records = self.event_detector.detect(previous, state, delta, frame=frame)
-        events = [event.as_dict() for event in event_records]
-        info = self._make_info(state, events=events, action=int(action))
-        if self.include_state_delta:
-            info["state_delta"] = delta.as_dict()
-        reward, terms = self.reward_fn(self._previous_info, info, int(action))
-        info["reward_terms"] = terms
-        success, failure, reason = self.task.evaluate(event_records)
-        terminated = success or failure
-        limit = self.task.max_steps if self.task.max_steps is not None else self.max_episode_steps
-        truncated = limit is not None and self.elapsed_steps >= limit and not terminated
-        info["task"] = {"id": self.task.id, "success": success, "failure": failure,
-                        "termination_reason": reason if terminated else ("time_limit" if truncated else None)}
-        self._previous_state, self._previous_info = state, info
-        return self.backend.screen_rgb(), float(reward), bool(terminated), bool(truncated), info
+        game_state = self.get_game_state()
+        events = detect_events(self._previous_state, game_state, self._visited_rooms)
+        reward = float(self.reward_fn(self._previous_state, game_state, events))
+        terminated = any(event["type"] == "player_died" for event in events)
+        truncated = (
+            self.max_episode_steps is not None
+            and self.elapsed_steps >= self.max_episode_steps
+            and not terminated
+        )
+        self._previous_state = game_state
+        return (
+            self.get_frame(),
+            reward,
+            terminated,
+            truncated,
+            self._info(game_state, events, action=action, num_frames=frames),
+        )
+
+    def get_frame(self):
+        """Return the current ``(144, 160, 3)`` RGB uint8 frame."""
+
+        return self.emulator.get_frame()
+
+    def get_game_state(self) -> dict[str, Any]:
+        """Read the current room, player, inventory, flags and entities."""
+
+        return self.memory.game_state()
+
+    def save_state(self, path: str | PathLike[str] | None = None) -> bytes:
+        data = self.emulator.save_state()
+        if path is not None:
+            output = Path(path)
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(data)
+        return data
+
+    def load_state(self, state: bytes | bytearray | memoryview | str | PathLike[str]) -> None:
+        self.emulator.release_all()
+        self.emulator.load_state(self._state_bytes(state))
+        self._previous_state = self.get_game_state()
+        self._visited_rooms.add(_room_key(self._previous_state))
+
+    def read_memory(self, address: int | str, length: int = 1) -> int | bytes:
+        """Read by numeric address or by a name from ``azle.sym``."""
+
+        return self.memory.read(address, length)
 
     def render(self):
-        return self.backend.screen_rgb()
+        return self.get_frame()
 
     def close(self) -> None:
-        self.backend.close()
+        self.emulator.close()
 
-    def _make_info(self, state, *, events, action):
-        return {"state": state, "events": events, "reward_terms": {},
-                "transition": {"action": action, "elapsed_steps": self.elapsed_steps},
-                "task": {"id": self.task.id, "success": False, "failure": False,
-                         "termination_reason": None}}
+    def _info(self, game_state, events, *, action, num_frames):
+        action_spec = self.actions[action] if action is not None else None
+        return {
+            "game_state": game_state,
+            "events": events,
+            "action": action,
+            "action_name": action_spec.name if action_spec else None,
+            "num_frames": num_frames,
+            "elapsed_steps": self.elapsed_steps,
+        }
+
+    @staticmethod
+    def _state_bytes(state: bytes | bytearray | memoryview | str | PathLike[str]) -> bytes:
+        if isinstance(state, (str, PathLike)):
+            return Path(state).read_bytes()
+        if isinstance(state, (bytes, bytearray, memoryview)):
+            return bytes(state)
+        raise TypeError("state must be bytes-like or a filesystem path")
+
+
+def _room_key(state: dict[str, Any]) -> tuple[int, int, int]:
+    room = state["room"]
+    return room["is_indoor"], room["map_id"], room["id"]

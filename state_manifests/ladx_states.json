@@ -2,6 +2,11 @@
   "rom_md5": "07c211479386825042efb4ad31bb525f",
   "states": [
     {"id": "start", "path": "save_states/azle.gbc.start.state", "sha256": "86657ae9f0a4cf7ef2db41ba861aeb9e9167f9cb9ca276c90199e27bcb3e7f24"},
-    {"id": "overworld_b3", "path": "save_states/azle.gbc.overworld.b3.state", "sha256": "76911edcf138cc7524cfcaf0b31fc1d44d87bcb71ba23841a539ec51f26b4074"}
+    {"id": "overworld_b3", "path": "save_states/azle.gbc.overworld.b3.state", "sha256": "76911edcf138cc7524cfcaf0b31fc1d44d87bcb71ba23841a539ec51f26b4074"},
+    {"id": "tail_cave_room16_r2", "path": "save_states/azle.gbc.tail_cave.r2.state", "sha256": "c35d28aaa2bb8f409e750642f6e27f7580fab9aa5cef267ee9822f7e917210de"},
+    {"id": "tail_cave_room12_keese", "path": "save_states/azle.gbc.tail_cave.r5.state", "sha256": "daf112829ae84abbb032d2b113a66ed8e636d9d0af6144e5a98522ba81e6d57c"},
+    {"id": "tail_cave_room09_train", "path": "save_states/azle.gbc.tail_cave.r11.state", "sha256": "a65e6ce601e3448b7d92313efe5ceea13b1ffbf993a355eeab21714e7237dbaa"},
+    {"id": "tail_cave_room03_spiked_beetles", "path": "save_states/azle.gbc.tail_cave.r16.state", "sha256": "f3a2fc0d97c6e61126bb5828f902dbec7356adb72a672c308734c90ed762b22e"},
+    {"id": "tail_cave_room09_eval", "path": "save_states/azle.gbc.tail_cave.r27.state", "sha256": "eb2ae2f4cef343da5301625cb50c9e6ba439d5677b5649fcde1f34b4fb6a10cc"}
   ]
 }

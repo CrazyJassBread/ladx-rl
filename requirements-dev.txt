@@ -30,8 +30,6 @@ packaging==26.2
     #   build
     #   pytest
     #   wheel
-pillow==12.2.0
-    # via zelda-env
 pip-tools==7.5.3
     # via -r requirements-dev.in
 pluggy==1.6.0

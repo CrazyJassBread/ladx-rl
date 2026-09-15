@@ -19,8 +19,8 @@ def test_real_rom_state_and_deterministic_replay():
 
 def _rollout(env):
     observation, info = env.reset(seed=7)
-    trace = [(observation.tobytes(), info["state"]["map"]["location"])]
+    trace = [(observation.tobytes(), info["game_state"]["room"])]
     for action in (0, 1, 1, 5, 0):
         observation, reward, terminated, truncated, info = env.step(action)
-        trace.append((observation.tobytes(), info["state"]["map"]["location"], reward))
+        trace.append((observation.tobytes(), info["game_state"]["room"], reward))
     return trace

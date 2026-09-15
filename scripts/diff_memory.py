@@ -1,10 +1,8 @@
 """Compare LADX WRAM snapshots from two PyBoy save states."""
 
 import argparse
-from pathlib import Path
-
 from zelda_env import ZeldaEnv
-from zelda_env.memory.snapshot import MemorySnapshot
+from zelda_env.utils.memory_scanner import MemorySnapshot
 
 
 def main() -> int:
@@ -13,15 +11,17 @@ def main() -> int:
     parser.add_argument("after")
     parser.add_argument("--limit", type=int, default=200)
     args = parser.parse_args()
-    env = ZeldaEnv(initial_state_path=args.before, state_mode="minimal")
+    env = ZeldaEnv(initial_state_path=args.before)
     try:
         env.reset()
-        before = MemorySnapshot.capture(env.backend)
-        env.backend.load_state(Path(args.after).read_bytes())
-        after = MemorySnapshot.capture(env.backend)
-        changes = before.changed_addresses(after)
-        for address, old, new in changes[: args.limit]:
-            print(f"{address:04X}: {old:02X} -> {new:02X}")
+        before = MemorySnapshot.capture(env.emulator)
+        env.load_state(args.after)
+        after = MemorySnapshot.capture(env.emulator)
+        changes = before.diff(after, env.symbols)
+        for change in changes[: args.limit]:
+            names = ", ".join(change["symbols"])
+            suffix = f" ({names})" if names else ""
+            print(f"{change['address']:04X}: {change['before']:02X} -> {change['after']:02X}{suffix}")
         print(f"changed addresses: {len(changes)}")
     finally:
         env.close()

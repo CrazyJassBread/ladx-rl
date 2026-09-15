@@ -1,0 +1,53 @@
+from pathlib import Path
+
+from zelda_env.memory import GameMemory
+from zelda_env.utils.symbol_loader import SymbolTable
+
+
+class FakeEmulator:
+    def __init__(self):
+        self.data = bytearray(0x10000)
+
+    def read_u8(self, address):
+        return self.data[address]
+
+    def read_bytes(self, address, length):
+        return bytes(self.data[address : address + length])
+
+
+def test_memory_table_builds_simple_game_state():
+    root = Path(__file__).parents[1]
+    symbols = SymbolTable.from_file(root / "ladx-disassembly/azle.sym")
+    emulator = FakeEmulator()
+    emulator.data[symbols.resolve("hMapRoom")] = 0x92
+    emulator.data[symbols.resolve("hLinkPositionX")] = 42
+    emulator.data[symbols.resolve("hLinkPositionY")] = 99
+    emulator.data[symbols.resolve("wHealth")] = 0x18
+    emulator.data[symbols.resolve("wInventoryItems")] = 1
+    emulator.data[symbols.resolve("wHasTailKey")] = 1
+    emulator.data[symbols.resolve("wRoomEvent")] = 0x42
+    emulator.data[symbols.resolve("wEntitiesStatusTable")] = 5
+    emulator.data[symbols.resolve("wEntitiesTypeTable")] = 9
+    emulator.data[symbols.resolve("wEntitiesPosXTable")] = 80
+    emulator.data[symbols.resolve("wEntitiesPosYTable")] = 64
+    emulator.data[symbols.resolve("wEntitiesHealthTable")] = 2
+
+    state = GameMemory(emulator, symbols).game_state()
+
+    assert state["room"]["id"] == 0x92
+    assert state["player"] == {
+        "x": 42,
+        "y": 99,
+        "z": 0,
+        "direction": 0,
+        "health": 0x18,
+        "max_hearts": 0,
+    }
+    assert state["inventory"]["items"][0] == 1
+    assert state["inventory"]["tail_key"] == 1
+    assert state["event_flags"]["room_event"] == 0x42
+    assert state["entities"][0]["type"] == 9
+    assert state["monsters"][0] == state["entities"][0]
+    assert state["monsters"][0]["x"] == 80
+    assert state["monsters"][0]["y"] == 64
+    assert state["monsters"][0]["health"] == 2

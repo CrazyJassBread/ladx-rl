@@ -1,23 +1,25 @@
 """Central environment factory used by training and evaluation."""
 
-from pathlib import Path
-from typing import Any
-
 from zelda_env import ZeldaEnv
-from zelda_env.tasks import TaskSpec
+from zelda_env.tasks.registry import make_task
+from zelda_env.tasks.wrapper import TaskEnv
+
+from training.experiments import InstanceConfig
 
 
-def make_env(config: dict[str, Any]) -> ZeldaEnv:
-    task_config = config.get("task", {})
-    task = TaskSpec(
-        id=task_config.get("id", "free_play"),
-        max_steps=task_config.get("max_steps"),
-        success_events=frozenset(task_config.get("success_events", [])),
-        failure_events=frozenset(task_config.get("failure_events", ["player_died"])),
+def make_task_env(config: InstanceConfig) -> TaskEnv:
+    """Build one pixel-only task instance from the experiment manifest."""
+
+    env = ZeldaEnv(
+        frame_skip=config.frame_skip,
+        max_episode_steps=config.max_episode_steps,
     )
-    return ZeldaEnv(
-        initial_state_path=Path(config["initial_state_path"]),
-        frame_skip=config.get("frame_skip", 4),
-        state_mode=config.get("state_mode", "reward"),
-        task=task,
+    task = make_task(config.task, task_id=config.name)
+    return TaskEnv(
+        env,
+        task,
+        config.state_paths,
+        noop_frames=config.noop_frames,
+        action_names=config.action_names,
+        expected_room=config.expected_room,
     )

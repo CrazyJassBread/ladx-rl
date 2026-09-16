@@ -5,26 +5,30 @@ privileged information used exclusively for reward, termination and metrics.
 Task logic lives under `zelda_env/tasks/`; room/state selection lives in
 `configs/experiments/tail_cave_transfer.toml`.
 
-## Experiment matrix
+## Task and variant matrix
 
-| ID | Train | Evaluate | Question |
-|---|---|---|---|
-| A | room `0x16`, fixed r2 state | same state | Can PPO solve the full kill-and-collect task? |
-| B | room `0x16`, no-op frames 0–15 | no-op frames 16–30 | Does it generalize beyond one exact emulator frame? |
-| C | two Hardhats in room `0x16` | one Hardhat in room `0x09` | Does the Hardhat-removal skill transfer zero-shot? |
-| D | Hardhat and Keese kill-all rooms | held-out Spiked Beetle room | Does multi-room training generalize to a new clear-room mechanic? |
-| E | room `0x09` | held-out room `0x09` state/jitter | Does C pretraining reduce fine-tuning samples versus scratch? |
+Experiment names use `task/variant`. The task name groups the room and semantic
+objective; the variant describes the training or evaluation condition.
 
-B currently tests temporal variation because only one r2 save state exists.
-Add new r2 states to the `states` arrays to extend it to position/layout
-variation without changing Python code.
+| Task | Variant | Train | Evaluate | Question |
+|---|---|---|---|---|
+| `room16_key` | `fixed` | room `0x16`, fixed r2 state | same state | Can PPO solve the full kill-and-collect task? |
+| `room16_key` | `reset_jitter` | no-op frames 0–15 | no-op frames 16–30 | Does the same task generalize beyond one exact emulator frame? |
+| `hardhat_transfer` | `room16_to_room09` | two Hardhats in room `0x16` | one Hardhat in room `0x09` | Does the Hardhat-removal skill transfer zero-shot? |
+| `kill_all_transfer` | `room16_room12_to_room03` | Hardhat and Keese rooms | held-out Spiked Beetle room | Does multi-room training generalize to a new clear-room mechanic? |
+| `room09_hardhat` | `reset_jitter` | room `0x09` | held-out room `0x09` reset jitter | Does room `0x16` pretraining improve fine-tuning versus scratch? |
+| `room15_compass` | `reset_jitter` | four Hiding Zols in room `0x15` | held-out reset jitter in room `0x15` | Can PPO clear the room, open the chest, and acquire the Compass? |
+
+`room16_key/reset_jitter` currently tests temporal variation because only one
+r2 save state exists. Add new r2 states to the `states` arrays to extend it to
+position/layout variation without changing Python code.
 
 ## Setup and validation
 
 ```bash
 python -m pip install -e '.[train]'
 python scripts/train.py --list
-python scripts/train.py --experiment A --check
+python scripts/train.py --experiment room16_key/fixed --check
 ```
 
 `--check` restores every referenced state and verifies its real room and target
@@ -33,38 +37,110 @@ entities before any training starts.
 ## Train and evaluate
 
 ```bash
-python scripts/train.py --experiment A --seed 0
-python scripts/evaluate.py artifacts/tail_cave/A/best_model.zip --experiment A
+python scripts/train.py --experiment room16_key/fixed --seed 0
+python scripts/evaluate.py artifacts/tail_cave/room16_key/fixed/best_model.zip \
+  --experiment room16_key/fixed
 ```
+
+Evaluation saves the first episode for each evaluation instance as an animated
+GIF. With the command above, GIFs are written under
+`artifacts/tail_cave/room16_key/fixed/evaluation_gifs/`. The JSON report includes each GIF
+path. Record more episodes or choose another directory with:
+
+```bash
+python scripts/evaluate.py artifacts/tail_cave/room16_key/fixed/best_model.zip \
+  -e room16_key/fixed --record-episodes 3 \
+  --gif-dir artifacts/tail_cave/room16_key/fixed/gifs
+```
+
+Set `--record-episodes 0` to disable recording. Playback speed defaults to the
+effective emulator speed (`60 / frame_skip` FPS); `--gif-fps` overrides it.
+
+The default `--device auto` uses `cuda:0` whenever CUDA is available and falls
+back to CPU otherwise. On a GPU server, use strict CUDA selection to catch a
+driver or PyTorch installation problem instead of silently training on CPU:
+
+```bash
+python - <<'PY'
+import torch
+
+print("PyTorch:", torch.__version__)
+print("PyTorch CUDA build:", torch.version.cuda)
+print("CUDA available:", torch.cuda.is_available())
+if torch.cuda.is_available():
+    print("GPU:", torch.cuda.get_device_name(0))
+PY
+python scripts/train.py --experiment room16_key/fixed --device cuda
+```
+
+Select another visible GPU with `--device cuda:1`. The resolved device, GPU
+name, PyTorch version, and CUDA version are written to `run.json` for each run.
+
+On a multi-core server, run independent PyBoy instances in subprocesses:
+
+```bash
+python scripts/train.py --experiment room16_key/fixed --device cuda --num-envs 8
+```
+
+`--num-envs` must be a multiple of the number of training instances. The
+trainer reduces `n_steps` per worker so the total transitions per PPO update
+stay equal to the single-worker baseline. For example,
+`room16_key/fixed` changes from `1 x 512` to `8 x 64`, retaining 512
+transitions per update. Environment
+workers are assigned evenly across the configured training instances. The
+actual worker count, per-worker steps, and rollout size are saved in
+`run.json`.
 
 Use `--steps` for a smoke run or budget override:
 
 ```bash
-python scripts/train.py -e C --steps 10000 --output artifacts/tail_cave/C_smoke
+python scripts/train.py -e hardhat_transfer/room16_to_room09 --steps 10000 \
+  --output artifacts/tail_cave/hardhat_transfer/smoke
 ```
+
+Train the room `0x15` Compass task with parallel PyBoy workers:
+
+```bash
+python scripts/train.py -e room15_compass/reset_jitter --device cuda --num-envs 8
+python scripts/evaluate.py \
+  artifacts/tail_cave/room15_compass/reset_jitter/best_model.zip \
+  -e room15_compass/reset_jitter
+```
+
+The `room15_compass/reset_jitter` task tracks exactly the four reset-time
+`HIDING_ZOL` entities
+(`0x9B`); the two `FIREBALL_SHOOTER` entities are room hazards and are not
+targets. Clearing the enemies alone is not success. The agent must interact
+with the central chest and cause the directly observed `wHasDungeonCompass`
+flag to change. Success is delayed until the chest-item entity disappears, so
+the pickup animation/dialog must finish rather than merely starting the chest
+interaction. Leaving room `0x15` before completion is a failure.
 
 Each run writes `run.json`, a manifest snapshot, TensorBoard logs, periodic
 checkpoints, `best_model.zip`, and `final_model.zip`. State SHA-256 values are
 captured in `run.json`.
 
-## Experiment E: fine-tune versus scratch
+## Room 0x09 Hardhat: fine-tune versus scratch
 
-First train C, then run two E jobs with identical target-room settings:
+First train the source-room transfer variant, then run two room `0x09` jobs
+with identical target-room settings:
 
 ```bash
-python scripts/train.py -e C --output artifacts/tail_cave/C
+python scripts/train.py -e hardhat_transfer/room16_to_room09
 
-python scripts/train.py -e E \
-  --init-model artifacts/tail_cave/C/best_model.zip \
-  --output artifacts/tail_cave/E_pretrained
+python scripts/train.py -e room09_hardhat/reset_jitter \
+  --init-model artifacts/tail_cave/hardhat_transfer/room16_to_room09/best_model.zip \
+  --output artifacts/tail_cave/room09_hardhat/pretrained
 
-python scripts/train.py -e E \
-  --output artifacts/tail_cave/E_scratch
+python scripts/train.py -e room09_hardhat/reset_jitter \
+  --output artifacts/tail_cave/room09_hardhat/scratch
 
-python scripts/evaluate.py artifacts/tail_cave/E_pretrained/best_model.zip \
-  -e E --output artifacts/tail_cave/E_pretrained/result.json
-python scripts/evaluate.py artifacts/tail_cave/E_scratch/best_model.zip \
-  -e E --output artifacts/tail_cave/E_scratch/result.json
+python scripts/evaluate.py artifacts/tail_cave/room09_hardhat/pretrained/best_model.zip \
+  -e room09_hardhat/reset_jitter \
+  --output artifacts/tail_cave/room09_hardhat/pretrained/result.json
+python scripts/evaluate.py artifacts/tail_cave/room09_hardhat/scratch/best_model.zip \
+  -e room09_hardhat/reset_jitter \
+  --output artifacts/tail_cave/room09_hardhat/scratch/result.json
 ```
 
 Run several seeds for meaningful comparisons. Primary metrics are success rate

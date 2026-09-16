@@ -6,7 +6,11 @@ from collections.abc import Mapping
 from typing import Any
 
 from zelda_env.tasks.base import Task
-from zelda_env.tasks.entity_task import DefeatEntitiesTask, KillAndCollectTask
+from zelda_env.tasks.entity_task import (
+    DefeatAndCollectItemTask,
+    DefeatEntitiesTask,
+    KillAndCollectTask,
+)
 
 
 def make_task(config: Mapping[str, Any], *, task_id: str) -> Task:
@@ -17,4 +21,6 @@ def make_task(config: Mapping[str, Any], *, task_id: str) -> Task:
         return DefeatEntitiesTask(**values)
     if kind == "kill_and_collect":
         return KillAndCollectTask(**values)
+    if kind == "defeat_and_collect_item":
+        return DefeatAndCollectItemTask(**values)
     raise ValueError(f"Unknown task kind: {kind}")

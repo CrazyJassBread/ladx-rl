@@ -59,7 +59,7 @@ kind = "kill_and_collect"
 target_types = [32]
 drop_type = 48
 
-# C/E: the Hardhat-removal skill, independent of the room's follow-up effect.
+# Hardhat-removal skill, independent of the room's follow-up effect.
 [instances.room16_hardhats]
 states = ["save_states/azle.gbc.tail_cave.r2.state"]
 expected_room = [1, 0, 22]
@@ -87,7 +87,7 @@ noop_frames = [16, 30]
 kind = "defeat_entities"
 target_types = [32]
 
-# D: train on two kill-all rooms and hold out a third room and enemy mechanic.
+# Train on two kill-all rooms and hold out a third room and enemy mechanic.
 [instances.room12_keese]
 states = ["save_states/azle.gbc.tail_cave.r5.state"]
 expected_room = [1, 0, 18]
@@ -106,33 +106,62 @@ noop_frames = [16, 30]
 kind = "defeat_entities"
 target_types = [44]
 
-[experiments.A]
+# Defeat the four hiding Zols in room 0x15 and open the Compass chest.
+[instances.room15_compass_train]
+states = ["save_states/azle.gbc.tail_cave.r3.state"]
+expected_room = [1, 0, 21]
+noop_frames = [0, 15]
+
+[instances.room15_compass_train.task]
+kind = "defeat_and_collect_item"
+target_types = [155]
+item_field = "dungeon_compass"
+chest_type = 7
+
+[instances.room15_compass_eval]
+states = ["save_states/azle.gbc.tail_cave.r3.state"]
+expected_room = [1, 0, 21]
+noop_frames = [16, 30]
+
+[instances.room15_compass_eval.task]
+kind = "defeat_and_collect_item"
+target_types = [155]
+item_field = "dungeon_compass"
+chest_type = 7
+
+[experiments."room16_key/fixed"]
 description = "Sanity check: learn and evaluate the full r2 task from one fixed state."
 train = ["room16_key_fixed"]
 eval = ["room16_key_fixed"]
 total_timesteps = 1000000
 
-[experiments.B]
+[experiments."room16_key/reset_jitter"]
 description = "Same-room temporal generalization with disjoint reset jitter ranges."
 train = ["room16_key_train"]
 eval = ["room16_key_eval"]
 total_timesteps = 1000000
 
-[experiments.C]
+[experiments."hardhat_transfer/room16_to_room09"]
 description = "Zero-shot Hardhat skill transfer from room 0x16 to room 0x09."
 train = ["room16_hardhats"]
 eval = ["room09_hardhat_eval"]
 total_timesteps = 1000000
 
-[experiments.D]
+[experiments."kill_all_transfer/room16_room12_to_room03"]
 description = "Multi-room kill-all training with an unseen room and enemy type held out."
 train = ["room16_hardhats", "room12_keese"]
 eval = ["room03_spiked_beetles"]
 total_timesteps = 2000000
 
-[experiments.E]
-description = "Fine-tune C on room 0x09 and compare against a scratch run on the same split."
+[experiments."room09_hardhat/reset_jitter"]
+description = "Fine-tune the room 0x16 Hardhat policy on room 0x09 and compare with scratch."
 train = ["room09_hardhat_train"]
 eval = ["room09_hardhat_eval"]
-pretrained_from = "C"
+pretrained_from = "hardhat_transfer/room16_to_room09"
 total_timesteps = 500000
+
+[experiments."room15_compass/reset_jitter"]
+description = "Defeat four hiding Zols, open the central chest, and acquire the Compass."
+train = ["room15_compass_train"]
+eval = ["room15_compass_eval"]
+total_timesteps = 2000000

@@ -1,4 +1,8 @@
+import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
+
+import pytest
 
 from zelda_env.memory import GameMemory
 from zelda_env.utils.symbol_loader import SymbolTable
@@ -25,6 +29,7 @@ def test_memory_table_builds_simple_game_state():
     emulator.data[symbols.resolve("wHealth")] = 0x18
     emulator.data[symbols.resolve("wInventoryItems")] = 1
     emulator.data[symbols.resolve("wHasTailKey")] = 1
+    emulator.data[symbols.resolve("wHasDungeonCompass")] = 1
     emulator.data[symbols.resolve("wRoomEvent")] = 0x42
     emulator.data[symbols.resolve("wEntitiesStatusTable")] = 5
     emulator.data[symbols.resolve("wEntitiesTypeTable")] = 9
@@ -45,9 +50,34 @@ def test_memory_table_builds_simple_game_state():
     }
     assert state["inventory"]["items"][0] == 1
     assert state["inventory"]["tail_key"] == 1
+    assert state["inventory"]["dungeon_compass"] == 1
     assert state["event_flags"]["room_event"] == 0x42
     assert state["entities"][0]["type"] == 9
     assert state["monsters"][0] == state["entities"][0]
     assert state["monsters"][0]["x"] == 80
     assert state["monsters"][0]["y"] == 64
     assert state["monsters"][0]["health"] == 2
+
+
+def test_read_state_returns_a_frozen_semantic_envelope_without_changing_legacy_dict():
+    root = Path(__file__).parents[1]
+    symbols = SymbolTable.from_file(root / "ladx-disassembly/azle.sym")
+    emulator = FakeEmulator()
+    emulator.data[symbols.resolve("hMapRoom")] = 0x92
+    emulator.data[symbols.resolve("hLinkPositionX")] = 42
+    memory = GameMemory(emulator, symbols)
+
+    state = memory.read_state()
+
+    assert state.room["id"] == 0x92
+    assert state.player["x"] == 42
+    with pytest.raises(FrozenInstanceError):
+        state.frame = 10
+
+    emulator.data[symbols.resolve("hLinkPositionX")] = 7
+    assert state.player["x"] == 42
+
+    legacy = memory.game_state()
+    assert isinstance(legacy, dict)
+    assert legacy["player"]["x"] == 7
+    json.dumps(legacy)

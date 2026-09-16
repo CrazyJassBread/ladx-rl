@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ PLAYER_ADDRESSES = {
     "max_hearts": "wMaxHearts",
 }
 INVENTORY_ADDRESSES = {
+    "dungeon_compass": "wHasDungeonCompass",
     "flippers": "wHasFlippers",
     "medicine": "wHasMedicine",
     "seashells": "wSeashellsCount",
@@ -71,6 +73,24 @@ ENTITY_TABLES = {
 }
 
 
+@dataclass(frozen=True)
+class GameState:
+    """Top-level frozen envelope for one decoded semantic state snapshot.
+
+    The nested dictionaries and lists intentionally retain the existing state
+    schema and are not deeply immutable.
+    """
+
+    frame: int
+    room: dict[str, int]
+    player: dict[str, int]
+    inventory: dict[str, Any]
+    progress: dict[str, int]
+    event_flags: dict[str, int]
+    entities: list[dict[str, int]]
+    monsters: list[dict[str, int]]
+
+
 class GameMemory:
     """Read LADX state using the declarative symbol tables above."""
 
@@ -89,7 +109,17 @@ class GameMemory:
             raise ValueError("memory range must be within 0x0000..0xFFFF")
         return self.emulator.read_u8(address) if length == 1 else self.emulator.read_bytes(address, length)
 
+    def read_state(self) -> GameState:
+        """Return a typed snapshot of the currently decoded semantic state."""
+
+        return GameState(**self._decode_state())
+
     def game_state(self) -> dict[str, Any]:
+        """Return the legacy dictionary-shaped semantic state."""
+
+        return self._decode_state()
+
+    def _decode_state(self) -> dict[str, Any]:
         inventory = self._read_fields(INVENTORY_ADDRESSES)
         inventory["items"] = list(self._read_symbol_bytes("wInventoryItems", INVENTORY_SIZE))
         inventory["instruments"] = [self._read_symbol(f"wHasInstrument{index}") for index in range(1, 9)]

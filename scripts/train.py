@@ -15,7 +15,12 @@ from training.experiments import DEFAULT_MANIFEST, ExperimentSuite, load_suite
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", default=str(DEFAULT_MANIFEST))
-    parser.add_argument("--experiment", "-e", default="A")
+    parser.add_argument(
+        "--experiment",
+        "-e",
+        default="room16_key/fixed",
+        help="Experiment in <task>/<variant> form (default: room16_key/fixed)",
+    )
     parser.add_argument("--steps", type=int, help="Override the experiment timestep budget")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
@@ -26,7 +31,16 @@ def main() -> int:
         "--init-model",
         help="PPO checkpoint to fine-tune; omit for a scratch run",
     )
-    parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--device",
+        default="auto",
+        help="PyTorch device: auto, cpu, cuda, or cuda:N (default: auto)",
+    )
+    parser.add_argument(
+        "--num-envs",
+        type=int,
+        help="Parallel training workers (default: one per training instance)",
+    )
     parser.add_argument(
         "--list",
         action="store_true",
@@ -51,11 +65,29 @@ def main() -> int:
     if args.steps is not None and args.steps < 1:
         parser.error("--steps must be positive")
 
-    _train(suite, experiment.name, args)
+    from training.sb3 import rollout_layout
+
+    try:
+        num_envs, n_steps = rollout_layout(
+            int(suite.ppo["n_steps"]),
+            len(experiment.train_instances),
+            args.num_envs,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    _train(suite, experiment.name, args, num_envs=num_envs, n_steps=n_steps)
     return 0
 
 
-def _train(suite: ExperimentSuite, experiment_name: str, args) -> None:
+def _train(
+    suite: ExperimentSuite,
+    experiment_name: str,
+    args,
+    *,
+    num_envs: int,
+    n_steps: int,
+) -> None:
     try:
         from stable_baselines3 import PPO
         from stable_baselines3.common.callbacks import (
@@ -65,12 +97,19 @@ def _train(suite: ExperimentSuite, experiment_name: str, args) -> None:
         )
     except ImportError as exc:
         raise RuntimeError("Install training dependencies: pip install -e '.[train]'") from exc
-    from training.sb3 import make_vec_env
+    from training.sb3 import device_info, make_vec_env, resolve_device
 
     experiment = suite.experiment(experiment_name)
+    device = resolve_device(args.device)
+    selected_device_info = device_info(device)
+    device_description = selected_device_info["device"]
+    if "gpu_name" in selected_device_info:
+        device_description += f" ({selected_device_info['gpu_name']})"
+    print(f"Training device: {device_description}")
+
     output = Path(args.output or f"artifacts/tail_cave/{experiment.name}")
     output.mkdir(parents=True, exist_ok=True)
-    train_env = make_vec_env(suite, experiment.train_instances)
+    train_env = make_vec_env(suite, experiment.train_instances, num_envs=num_envs)
     eval_env = make_vec_env(suite, experiment.eval_instances)
     train_env.seed(args.seed)
     eval_env.seed(args.seed + 10_000)
@@ -80,13 +119,20 @@ def _train(suite: ExperimentSuite, experiment_name: str, args) -> None:
         for key, value in suite.ppo.items()
         if key not in {"frame_stack", "eval_freq", "checkpoint_freq", "eval_episodes"}
     }
+    ppo_values["n_steps"] = n_steps
+    rollout_size = n_steps * num_envs
+    print(
+        f"Sampling layout: {num_envs} env(s) x {n_steps} steps "
+        f"= {rollout_size} transitions/update"
+    )
     tensorboard_log = str(output / "tensorboard")
     if args.init_model:
         model = PPO.load(
             args.init_model,
             env=train_env,
-            device=args.device,
+            device=device,
             tensorboard_log=tensorboard_log,
+            n_steps=n_steps,
         )
         model.set_random_seed(args.seed)
     else:
@@ -95,27 +141,34 @@ def _train(suite: ExperimentSuite, experiment_name: str, args) -> None:
             policy,
             train_env,
             seed=args.seed,
-            device=args.device,
+            device=device,
             verbose=1,
             tensorboard_log=tensorboard_log,
             **ppo_values,
         )
 
-    n_envs = len(experiment.train_instances)
     checkpoint = CheckpointCallback(
-        save_freq=max(int(suite.ppo["checkpoint_freq"]) // n_envs, 1),
+        save_freq=max(int(suite.ppo["checkpoint_freq"]) // num_envs, 1),
         save_path=str(output / "checkpoints"),
         name_prefix="ppo",
     )
     evaluate = EvalCallback(
         eval_env,
         n_eval_episodes=int(suite.ppo["eval_episodes"]),
-        eval_freq=max(int(suite.ppo["eval_freq"]) // n_envs, 1),
+        eval_freq=max(int(suite.ppo["eval_freq"]) // num_envs, 1),
         best_model_save_path=str(output),
         log_path=str(output / "evaluation"),
         deterministic=True,
     )
-    _write_run_metadata(output, suite, experiment.name, args)
+    _write_run_metadata(
+        output,
+        suite,
+        experiment.name,
+        args,
+        selected_device_info,
+        num_envs=num_envs,
+        n_steps=n_steps,
+    )
     try:
         model.learn(
             total_timesteps=args.steps or experiment.total_timesteps,
@@ -147,11 +200,12 @@ def _check_instances(suite: ExperimentSuite, names: tuple[str, ...], seed: int) 
 def _list_experiments(suite: ExperimentSuite) -> None:
     for experiment in suite.experiments.values():
         note = (
-            f"; initialize from {experiment.pretrained_from}"
+            f"; recommended initialization: {experiment.pretrained_from}"
             if experiment.pretrained_from
             else ""
         )
-        print(f"{experiment.name}: {experiment.description}{note}")
+        description = experiment.description.rstrip(".")
+        print(f"{experiment.name}: {description}{note}.")
 
 
 def _write_run_metadata(
@@ -159,6 +213,10 @@ def _write_run_metadata(
     suite: ExperimentSuite,
     experiment_name: str,
     args,
+    selected_device_info: dict[str, object],
+    *,
+    num_envs: int,
+    n_steps: int,
 ) -> None:
     experiment = suite.experiment(experiment_name)
     state_paths = {
@@ -168,10 +226,17 @@ def _write_run_metadata(
     }
     metadata = {
         "experiment": experiment.name,
+        "task": experiment.task_name,
+        "variant": experiment.variant,
         "description": experiment.description,
         "seed": args.seed,
         "timesteps": args.steps or experiment.total_timesteps,
         "init_model": args.init_model,
+        "requested_device": args.device,
+        **selected_device_info,
+        "num_envs": num_envs,
+        "n_steps_per_env": n_steps,
+        "rollout_size": num_envs * n_steps,
         "train_instances": experiment.train_instances,
         "eval_instances": experiment.eval_instances,
         "state_sha256": {

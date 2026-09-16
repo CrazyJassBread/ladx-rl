@@ -59,6 +59,7 @@ class PyBoyEmulator:
             kwargs["symbols"] = str(sym_path)
         self.pyboy = PyBoy(str(rom), **kwargs)
         self._pressed: set[str] = set()
+        self._needs_render_warmup = False
 
     def press(self, buttons: frozenset[str]) -> None:
         self.release_all()
@@ -76,8 +77,17 @@ class PyBoyEmulator:
         self._pressed.clear()
 
     def advance(self, frames: int) -> None:
-        for _ in range(frames):
-            self.pyboy.tick()
+        if self._needs_render_warmup:
+            # PyBoy save states do not restore the renderer's partial-frame
+            # cache. Render every skipped frame once after loading so the first
+            # pixel observation is deterministic, then use the fast path.
+            for _ in range(frames):
+                self.pyboy.tick(count=1, render=True, sound=False)
+            self._needs_render_warmup = False
+            return
+        # PyBoy renders only the final frame when count > 1. This preserves the
+        # observed frame while avoiding repeated rendering during frame skip.
+        self.pyboy.tick(count=frames, render=True, sound=False)
 
     def read_u8(self, address: int) -> int:
         return int(self.pyboy.memory[address]) & 0xFF
@@ -92,6 +102,7 @@ class PyBoyEmulator:
 
     def load_state(self, data: bytes) -> None:
         self.pyboy.load_state(BytesIO(data))
+        self._needs_render_warmup = True
 
     def get_frame(self):
         try:

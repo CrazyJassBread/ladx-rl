@@ -200,6 +200,96 @@ class KillAndCollectTask(DefeatEntitiesTask):
         }
 
 
+class DefeatAndCollectItemTask(DefeatEntitiesTask):
+    """Defeat reset-time targets, interact with a chest, and acquire its item."""
+
+    def __init__(
+        self,
+        target_types: Iterable[int],
+        *,
+        item_field: str,
+        chest_type: int = 0x07,
+        chest_reward: float = 0.2,
+        collect_reward: float = 5.0,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(target_types, **kwargs)
+        self.item_field = item_field
+        self.chest_type = int(chest_type)
+        self.chest_reward = float(chest_reward)
+        self.collect_reward = float(collect_reward)
+        self._initial_item = 0
+        self._chest_seen = False
+
+    def reset(self, state: GameState) -> dict[str, Any]:
+        try:
+            self._initial_item = int(state["inventory"][self.item_field])
+        except KeyError as exc:
+            raise ValueError(f"Unknown inventory item field: {self.item_field}") from exc
+        if self._initial_item:
+            raise ValueError(
+                f"Task {self.task_id!r} requires {self.item_field!r} to be absent at reset"
+            )
+        self._chest_seen = False
+        return super().reset(state)
+
+    def step(
+        self,
+        previous: GameState,
+        current: GameState,
+        events: EventList,
+    ) -> TaskStep:
+        result = super().step(previous, current, events)
+        if result.info["failure"] is not None:
+            return result
+
+        chest_visible = self._chest_visible(current)
+        first_chest = chest_visible and not self._chest_seen
+        self._chest_seen |= chest_visible
+        collected = self._item_collected(current)
+        was_collected = self._item_collected(previous)
+        success = self._cleared and self._item_received(current)
+        reward = result.reward
+        if first_chest:
+            reward += self.chest_reward
+        if collected and not was_collected:
+            reward += self.collect_reward
+
+        info = self._info(current, success=success, failure=None)
+        return TaskStep(reward=reward, terminated=success, info=info)
+
+    def _success_condition(self, state: GameState) -> bool:
+        return self._item_received(state)
+
+    def _phase(self, state: GameState) -> str:
+        if self._cleared and self._item_received(state):
+            return "complete"
+        if self._chest_seen and not self._item_received(state):
+            return "receive_item"
+        return "open_chest" if self._cleared else "defeat_targets"
+
+    def _extra_info(self, state: GameState) -> dict[str, Any]:
+        current_item = int(state["inventory"][self.item_field])
+        return {
+            "chest_type": self.chest_type,
+            "chest_seen": self._chest_seen,
+            "item_field": self.item_field,
+            "initial_item_value": self._initial_item,
+            "current_item_value": current_item,
+            "item_collected": current_item > self._initial_item,
+            "item_received": self._item_received(state),
+        }
+
+    def _item_collected(self, state: GameState) -> bool:
+        return int(state["inventory"][self.item_field]) > self._initial_item
+
+    def _item_received(self, state: GameState) -> bool:
+        return self._item_collected(state) and self._chest_seen and not self._chest_visible(state)
+
+    def _chest_visible(self, state: GameState) -> bool:
+        return any(entity["type"] == self.chest_type for entity in state["entities"])
+
+
 def _room_key(state: GameState) -> tuple[int, int, int]:
     room = state["room"]
     return room["is_indoor"], room["map_id"], room["id"]

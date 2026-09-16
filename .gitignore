@@ -69,3 +69,5 @@ screenshots/*.png
 
 # local editor settings
 .vscode/
+scripts/sync_code.sh
+artifacts/

@@ -8,6 +8,7 @@ def _state(*, room=1, health=16, item=0, monster_health=2):
         "room": {"is_indoor": 0, "map_id": 0, "id": room},
         "player": {"health": health},
         "inventory": {
+            "dungeon_compass": 0,
             "items": [item] + [0] * 11,
             "instruments": [0] * 8,
             "tail_key": 0,
@@ -53,3 +54,17 @@ def test_small_key_increase_is_detected():
     events = detect_events(old, new, {(0, 0, 1)})
 
     assert any(event["type"] == "small_key_acquired" for event in events)
+
+
+def test_compass_acquisition_is_detected():
+    old = _state()
+    new = _state()
+    new["inventory"]["dungeon_compass"] = 1
+
+    events = detect_events(old, new, {(0, 0, 1)})
+
+    assert any(
+        event["type"] == "dungeon_item_acquired"
+        and event["data"]["item"] == "compass"
+        for event in events
+    )

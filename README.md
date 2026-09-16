@@ -71,15 +71,17 @@ Use the arrow keys to move, `Z` for A, `X` for B, `Enter` for START,
 
 ## Tail Cave PPO experiments
 
-The A–E transfer suite trains from pixels while using RAM only for task rewards
-and evaluation:
+Experiment names use the `task/variant` form so conditions for the same task
+stay grouped. The transfer suite trains from pixels while using RAM only for
+task rewards and evaluation:
 
 ```bash
 python -m pip install -e '.[train]'
 python scripts/train.py --list
-python scripts/train.py --experiment A --check
-python scripts/train.py --experiment A
-python scripts/evaluate.py artifacts/tail_cave/A/best_model.zip --experiment A
+python scripts/train.py --experiment room16_key/fixed --check
+python scripts/train.py --experiment room16_key/fixed
+python scripts/evaluate.py artifacts/tail_cave/room16_key/fixed/best_model.zip \
+  --experiment room16_key/fixed
 ```
 
 Experiment definitions are in

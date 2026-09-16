@@ -11,7 +11,7 @@ from zelda_env import ZeldaEnv
 from viewer import GameInfoViewer
 
 
-DEFAULT_STATE = Path("save_states/azle.gbc.tail_cave.r2.state")
+DEFAULT_STATE = Path("save_states/azle.gbc.tail_cave.r3.state")
 
 KEY_TO_BUTTON = {
     "up": "UP",

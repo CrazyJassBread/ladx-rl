@@ -10,6 +10,7 @@ EVENT_REWARDS = {
     "player_damaged": -0.02,
     "player_died": -1.0,
     "item_acquired": 0.2,
+    "dungeon_item_acquired": 0.2,
     "key_acquired": 0.2,
     "instrument_acquired": 2.0,
     "monster_defeated": 0.05,
@@ -77,6 +78,8 @@ def _detect_inventory(previous, current, frame, events) -> None:
     for key in ("tail_key", "angler_key", "face_key", "bird_key"):
         if not old[key] and new[key]:
             events.append(_event("key_acquired", frame, key=key))
+    if not old["dungeon_compass"] and new["dungeon_compass"]:
+        events.append(_event("dungeon_item_acquired", frame, item="compass"))
     for index, (before, after) in enumerate(zip(old["instruments"], new["instruments"], strict=True), 1):
         if not before and after:
             events.append(_event("instrument_acquired", frame, instrument=index))

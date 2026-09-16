@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zelda_env import ZeldaEnv
+from zelda_env import GameState, ZeldaEnv
 from zelda_env.memory import DEFAULT_SYM_PATH
 from zelda_env.utils.symbol_loader import SymbolTable
 
@@ -66,6 +66,19 @@ def test_pixel_observation_matches_space():
         assert observation.shape == (144, 160, 3)
         assert env.observation_space.contains(observation)
         assert info["game_state"]["player"]["x"] == 0
+    finally:
+        env.close()
+
+
+def test_read_state_exposes_typed_state_without_changing_info_schema():
+    env = _env()
+    try:
+        _, info = env.reset()
+        state = env.read_state()
+
+        assert isinstance(state, GameState)
+        assert state.player["x"] == 0
+        assert isinstance(info["game_state"], dict)
     finally:
         env.close()
 

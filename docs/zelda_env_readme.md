@@ -35,7 +35,8 @@ Additional direct helpers are available:
 
 ```python
 frame = env.get_frame()
-state = env.get_game_state()
+state = env.read_state()        # typed, top-level frozen GameState snapshot
+legacy_state = env.get_game_state()  # existing dictionary-shaped state
 
 checkpoint = env.save_state()
 env.save_state("save_states/checkpoint.state")
@@ -44,6 +45,12 @@ env.load_state(checkpoint)                    # bytes or path
 health = env.read_memory("wHealth")          # one byte -> int
 items = env.read_memory("wInventoryItems", 12)  # multiple bytes -> bytes
 ```
+
+`GameState` contains the existing decoded `frame`, `room`, `player`,
+`inventory`, `progress`, `event_flags`, `entities`, and `monsters` fields. Its
+top-level attributes cannot be reassigned; its nested dictionaries and lists
+retain the legacy schema and are not deeply immutable. `info["game_state"]`
+and `get_game_state()` remain dictionary-shaped for compatibility.
 
 `reset()` reloads `initial_state_path`, or the emulator's initial boot state if
 no state was configured. A reset can override it with

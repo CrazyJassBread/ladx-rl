@@ -1,6 +1,7 @@
 """2D Zelda reinforcement-learning environment package."""
 
 from zelda_env.env import ZeldaEnv
+from zelda_env.memory import GameState
 
 try:
     from gymnasium.envs.registration import register, registry
@@ -10,4 +11,4 @@ try:
 except ImportError:  # optional dependency
     pass
 
-__all__ = ["ZeldaEnv"]
+__all__ = ["GameState", "ZeldaEnv"]

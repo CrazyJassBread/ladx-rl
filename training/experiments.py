@@ -33,6 +33,14 @@ class ExperimentConfig:
     total_timesteps: int
     pretrained_from: str | None = None
 
+    @property
+    def task_name(self) -> str:
+        return self.name.split("/", 1)[0]
+
+    @property
+    def variant(self) -> str:
+        return self.name.split("/", 1)[1]
+
 
 @dataclass(frozen=True)
 class ExperimentSuite:
@@ -42,11 +50,12 @@ class ExperimentSuite:
     ppo: dict[str, Any]
 
     def experiment(self, name: str) -> ExperimentConfig:
-        try:
-            return self.experiments[name.upper()]
-        except KeyError as exc:
-            choices = ", ".join(sorted(self.experiments))
-            raise ValueError(f"Unknown experiment {name!r}; choose one of: {choices}") from exc
+        normalized = name.strip().casefold()
+        for experiment_name, experiment in self.experiments.items():
+            if experiment_name.casefold() == normalized:
+                return experiment
+        choices = ", ".join(sorted(self.experiments))
+        raise ValueError(f"Unknown experiment {name!r}; choose one of: {choices}")
 
 
 def load_suite(path: str | Path = DEFAULT_MANIFEST) -> ExperimentSuite:
@@ -59,8 +68,8 @@ def load_suite(path: str | Path = DEFAULT_MANIFEST) -> ExperimentSuite:
         for name, values in data["instances"].items()
     }
     experiments = {
-        name.upper(): ExperimentConfig(
-            name=name.upper(),
+        name: ExperimentConfig(
+            name=name,
             description=values["description"],
             train_instances=tuple(values["train"]),
             eval_instances=tuple(values["eval"]),
@@ -70,11 +79,20 @@ def load_suite(path: str | Path = DEFAULT_MANIFEST) -> ExperimentSuite:
         for name, values in data["experiments"].items()
     }
     for experiment in experiments.values():
+        if experiment.name.count("/") != 1 or not all(experiment.name.split("/")):
+            raise ValueError(
+                f"Experiment {experiment.name!r} must use '<task>/<variant>' naming"
+            )
         for instance_name in experiment.train_instances + experiment.eval_instances:
             if instance_name not in instances:
                 raise ValueError(
                     f"Experiment {experiment.name} references unknown instance {instance_name}"
                 )
+        if experiment.pretrained_from and experiment.pretrained_from not in experiments:
+            raise ValueError(
+                f"Experiment {experiment.name} references unknown pretrained experiment "
+                f"{experiment.pretrained_from}"
+            )
     return ExperimentSuite(manifest_path, instances, experiments, dict(data["ppo"]))
 
 

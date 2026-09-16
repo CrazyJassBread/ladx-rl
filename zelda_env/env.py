@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover
 from zelda_env.actions import DEFAULT_ACTIONS, ActionSpec, buttons_for_action
 from zelda_env.emulator import Emulator, PyBoyEmulator
 from zelda_env.events import default_reward, detect_events
-from zelda_env.memory import DEFAULT_ROM_PATH, DEFAULT_SYM_PATH, GameMemory
+from zelda_env.memory import DEFAULT_ROM_PATH, DEFAULT_SYM_PATH, GameMemory, GameState
 from zelda_env.utils.symbol_loader import SymbolTable
 
 
@@ -135,8 +135,13 @@ class ZeldaEnv(gym.Env if gym is not None else object):
 
         return self.emulator.get_frame()
 
+    def read_state(self) -> GameState:
+        """Read the current semantic state as a typed snapshot."""
+
+        return self.memory.read_state()
+
     def get_game_state(self) -> dict[str, Any]:
-        """Read the current room, player, inventory, flags and entities."""
+        """Read the legacy dictionary-shaped semantic state."""
 
         return self.memory.game_state()
 

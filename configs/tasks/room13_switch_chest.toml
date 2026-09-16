@@ -1,0 +1,26 @@
+kind = "press_switch_open_chest"
+chest_type = 7 # ENTITY_CHEST_WITH_ITEM
+success_stage = "chest"
+waypoint_tolerance = 8
+
+# Reach the upper safe corridor, push the Hardhat into a side pit, then step
+# onto the button. After the switch, return through the corridor to the chest.
+blocking_hazard_types = [32] # ENTITY_HARDHAT_BEETLE
+switch_waypoints = [[82, 107], [36, 107], [36, 27], [84, 27]]
+post_hazard_waypoints = [[84, 27], [84, 59]]
+chest_waypoints = [[84, 27], [119, 27], [119, 66], [139, 66], [139, 58]]
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+pit_contact = -0.5
+fell_in_pit = -3.0
+route_progress = 0.01
+waypoint_reached = 0.25
+switch_hold_progress = 0.02
+blocking_hazard_removed = 1.0
+switch_pressed = 1.0
+chest_revealed = 0.5
+chest_opened = 5.0

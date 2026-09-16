@@ -8,6 +8,7 @@ The active project layout is intentionally small:
 
 - `zelda_env/`: emulator adapter, Gymnasium environment, memory state and tasks;
 - `configs/experiments/`: room/state splits and PPO settings;
+- `configs/tasks/`: task mechanics and TOML reward weights;
 - `training/` and `scripts/`: environment construction, training and evaluation;
 - `examples/`: random and keyboard-controlled visual tests;
 - `save_states/`: reproducible task starting points;
@@ -85,6 +86,6 @@ python scripts/evaluate.py artifacts/tail_cave/room16_key/fixed/best_model.zip \
 ```
 
 Experiment definitions are in
-`configs/experiments/tail_cave_transfer.toml`. See `docs/training.md` for the
-room splits, zero-shot protocol, and pretrained-versus-scratch fine-tuning
-commands.
+`configs/experiments/tail_cave_transfer.toml`; reward weights are in
+`configs/tasks/`. See `docs/training.md` and `docs/task_rewards.md` for the room
+splits, reward signals, and transfer protocols.

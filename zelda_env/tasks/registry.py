@@ -11,6 +11,7 @@ from zelda_env.tasks.entity_task import (
     DefeatEntitiesTask,
     KillAndCollectTask,
 )
+from zelda_env.tasks.switch_task import PressSwitchOpenChestTask
 
 
 def make_task(config: Mapping[str, Any], *, task_id: str) -> Task:
@@ -23,4 +24,6 @@ def make_task(config: Mapping[str, Any], *, task_id: str) -> Task:
         return KillAndCollectTask(**values)
     if kind == "defeat_and_collect_item":
         return DefeatAndCollectItemTask(**values)
+    if kind == "press_switch_open_chest":
+        return PressSwitchOpenChestTask(**values)
     raise ValueError(f"Unknown task kind: {kind}")

@@ -32,6 +32,9 @@ PLAYER_ADDRESSES = {
     "direction": "hLinkDirection",
     "health": "wHealth",
     "max_hearts": "wMaxHearts",
+    "motion_state": "wLinkMotionState",
+    "ground_status": "wLinkGroundStatus",
+    "pit_slipping_counter": "wPitSlippingCounter",
 }
 INVENTORY_ADDRESSES = {
     "dungeon_compass": "wHasDungeonCompass",
@@ -56,6 +59,10 @@ EVENT_FLAG_ADDRESSES = {
     "room_event": "wRoomEvent",
     "room_event_executed": "wRoomEventEffectExecuted",
     "shutter_event_executed": "wShutterDoorEventExecuted",
+    "switch_button_pressed": "wSwitchButtonPressed",
+    # Statically confirmed at bank 02:7810-781D: consecutive frames spent on
+    # OBJECT_SWITCH_BUTTON before wSwitchButtonPressed becomes 0x60.
+    "switch_button_hold_frames": "wC1CA",
     "stole_from_shop": "wHasStolenFromShop",
     "tarin": "wTarinFlag",
     "richard_spoken": "wRichardSpokenFlag",

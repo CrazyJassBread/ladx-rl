@@ -1,0 +1,10 @@
+kind = "defeat_entities"
+target_types = [25] # ENTITY_KEESE
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+target_defeated = 1.0
+all_targets_cleared = 0.5

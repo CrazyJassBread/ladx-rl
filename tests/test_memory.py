@@ -27,10 +27,15 @@ def test_memory_table_builds_simple_game_state():
     emulator.data[symbols.resolve("hLinkPositionX")] = 42
     emulator.data[symbols.resolve("hLinkPositionY")] = 99
     emulator.data[symbols.resolve("wHealth")] = 0x18
+    emulator.data[symbols.resolve("wLinkMotionState")] = 6
+    emulator.data[symbols.resolve("wLinkGroundStatus")] = 7
+    emulator.data[symbols.resolve("wPitSlippingCounter")] = 12
     emulator.data[symbols.resolve("wInventoryItems")] = 1
     emulator.data[symbols.resolve("wHasTailKey")] = 1
     emulator.data[symbols.resolve("wHasDungeonCompass")] = 1
     emulator.data[symbols.resolve("wRoomEvent")] = 0x42
+    emulator.data[symbols.resolve("wSwitchButtonPressed")] = 0x60
+    emulator.data[symbols.resolve("wC1CA")] = 17
     emulator.data[symbols.resolve("wEntitiesStatusTable")] = 5
     emulator.data[symbols.resolve("wEntitiesTypeTable")] = 9
     emulator.data[symbols.resolve("wEntitiesPosXTable")] = 80
@@ -47,11 +52,16 @@ def test_memory_table_builds_simple_game_state():
         "direction": 0,
         "health": 0x18,
         "max_hearts": 0,
+        "motion_state": 6,
+        "ground_status": 7,
+        "pit_slipping_counter": 12,
     }
     assert state["inventory"]["items"][0] == 1
     assert state["inventory"]["tail_key"] == 1
     assert state["inventory"]["dungeon_compass"] == 1
     assert state["event_flags"]["room_event"] == 0x42
+    assert state["event_flags"]["switch_button_pressed"] == 0x60
+    assert state["event_flags"]["switch_button_hold_frames"] == 17
     assert state["entities"][0]["type"] == 9
     assert state["monsters"][0] == state["entities"][0]
     assert state["monsters"][0]["x"] == 80

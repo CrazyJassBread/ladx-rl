@@ -189,9 +189,14 @@ def _check_instances(suite: ExperimentSuite, names: tuple[str, ...], seed: int) 
             state = info["game_state"]
             room = state["room"]
             task = info["task"]
+            detail = (
+                f"targets={task['target_slots']}"
+                if "target_slots" in task
+                else f"phase={task['phase']}"
+            )
             print(
                 f"OK {name}: room=({room['is_indoor']},{room['map_id']},0x{room['id']:02X}) "
-                f"targets={task['target_slots']} noops={info['reset_noop_frames']}"
+                f"{detail} noops={info['reset_noop_frames']}"
             )
         finally:
             env.close()
@@ -224,6 +229,10 @@ def _write_run_metadata(
         for name in experiment.train_instances + experiment.eval_instances
         for path in suite.instances[name].state_paths
     }
+    task_config_paths = {
+        suite.instances[name].task_config_path
+        for name in experiment.train_instances + experiment.eval_instances
+    }
     metadata = {
         "experiment": experiment.name,
         "task": experiment.task_name,
@@ -243,12 +252,20 @@ def _write_run_metadata(
             _display_path(path): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in sorted(state_paths)
         },
+        "task_config_sha256": {
+            _display_path(path): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(task_config_paths)
+        },
     }
     (output / "run.json").write_text(
         json.dumps(metadata, indent=2) + "\n",
         encoding="utf-8",
     )
     shutil.copy2(suite.path, output / "manifest.toml")
+    task_snapshot_dir = output / "task_configs"
+    task_snapshot_dir.mkdir(exist_ok=True)
+    for path in task_config_paths:
+        shutil.copy2(path, task_snapshot_dir / path.name)
 
 
 def _display_path(path: Path) -> str:

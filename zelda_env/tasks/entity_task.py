@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
+from zelda_env.reward_signals import RewardComposer, transition_signals
 from zelda_env.tasks.base import EventList, GameState, Task, TaskStep
 
 
@@ -14,24 +16,14 @@ class DefeatEntitiesTask(Task):
         self,
         target_types: Iterable[int],
         *,
+        reward: Mapping[str, float],
         task_id: str = "defeat_entities",
-        step_penalty: float = -0.001,
-        target_reward: float = 1.0,
-        all_cleared_reward: float = 0.5,
-        damage_penalty: float = -0.02,
-        death_penalty: float = -2.0,
-        room_exit_penalty: float = -1.0,
     ) -> None:
         self.task_id = task_id
         self.target_types = frozenset(int(value) for value in target_types)
         if not self.target_types:
             raise ValueError("target_types cannot be empty")
-        self.step_penalty = float(step_penalty)
-        self.target_reward = float(target_reward)
-        self.all_cleared_reward = float(all_cleared_reward)
-        self.damage_penalty = float(damage_penalty)
-        self.death_penalty = float(death_penalty)
-        self.room_exit_penalty = float(room_exit_penalty)
+        self.rewards = RewardComposer(reward)
         self._room: tuple[int, int, int] | None = None
         self._targets: dict[int, int] = {}
         self._removed: set[int] = set()
@@ -49,7 +41,9 @@ class DefeatEntitiesTask(Task):
             raise ValueError(f"Task {self.task_id!r} found no target entities of type {expected}")
         self._removed = set()
         self._cleared = False
-        return self._info(state, success=False, failure=None)
+        info = self._info(state, success=False, failure=None)
+        info["reward_weights"] = dict(self.rewards.weights)
+        return info
 
     def step(
         self,
@@ -57,27 +51,16 @@ class DefeatEntitiesTask(Task):
         current: GameState,
         events: EventList,
     ) -> TaskStep:
-        reward = self.step_penalty
-        damage = sum(
-            event["data"]["amount"]
-            for event in events
-            if event["type"] == "player_damaged"
-        )
-        reward += self.damage_penalty * damage
+        signals = transition_signals(current, events)
 
         failure = None
         if current["player"]["health"] == 0:
             failure = "player_died"
-            reward += self.death_penalty
         elif _room_key(current) != self._room:
             failure = "left_task_room"
-            reward += self.room_exit_penalty
+            signals["premature_room_exit"] = 1.0
         if failure is not None:
-            return TaskStep(
-                reward=reward,
-                terminated=True,
-                info=self._info(current, success=False, failure=failure),
-            )
+            return self._result(current, signals, success=False, failure=failure)
 
         active = {entity["slot"]: entity["type"] for entity in current["entities"]}
         removed_now = {
@@ -86,19 +69,16 @@ class DefeatEntitiesTask(Task):
             if slot not in self._removed and active.get(slot) != entity_type
         }
         self._removed.update(removed_now)
-        reward += self.target_reward * len(removed_now)
+        if removed_now:
+            signals["target_defeated"] = float(len(removed_now))
 
         all_cleared = len(self._removed) == len(self._targets)
         if all_cleared and not self._cleared:
-            reward += self.all_cleared_reward
+            signals["all_targets_cleared"] = 1.0
             self._cleared = True
 
         success = all_cleared and self._success_condition(current)
-        return TaskStep(
-            reward=reward,
-            terminated=success,
-            info=self._info(current, success=success, failure=None),
-        )
+        return self._result(current, signals, success=success, failure=None)
 
     def _success_condition(self, state: GameState) -> bool:
         return True
@@ -108,6 +88,24 @@ class DefeatEntitiesTask(Task):
 
     def _extra_info(self, state: GameState) -> dict[str, Any]:
         return {}
+
+    def _result(
+        self,
+        state: GameState,
+        signals: dict[str, float],
+        *,
+        success: bool,
+        failure: str | None,
+    ) -> TaskStep:
+        reward, terms = self.rewards.compose(signals)
+        info = self._info(state, success=success, failure=failure)
+        info["reward_signals"] = signals
+        info["reward_terms"] = terms
+        return TaskStep(
+            reward=reward,
+            terminated=success or failure is not None,
+            info=info,
+        )
 
     def _info(
         self,
@@ -138,14 +136,10 @@ class KillAndCollectTask(DefeatEntitiesTask):
         target_types: Iterable[int],
         *,
         drop_type: int = 0x30,
-        drop_reward: float = 0.2,
-        collect_reward: float = 5.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(target_types, **kwargs)
         self.drop_type = int(drop_type)
-        self.drop_reward = float(drop_reward)
-        self.collect_reward = float(collect_reward)
         self._initial_keys = 0
         self._drop_seen = False
 
@@ -170,14 +164,13 @@ class KillAndCollectTask(DefeatEntitiesTask):
         collected = current["progress"]["small_keys"] > self._initial_keys
         was_collected = previous["progress"]["small_keys"] > self._initial_keys
         success = self._cleared and collected
-        reward = result.reward
+        signals = dict(result.info["reward_signals"])
         if first_drop:
-            reward += self.drop_reward
+            signals["key_drop_seen"] = 1.0
         if collected and not was_collected:
-            reward += self.collect_reward
+            signals["key_collected"] = 1.0
 
-        info = self._info(current, success=success, failure=None)
-        return TaskStep(reward=reward, terminated=success, info=info)
+        return self._result(current, signals, success=success, failure=None)
 
     def _success_condition(self, state: GameState) -> bool:
         return state["progress"]["small_keys"] > self._initial_keys
@@ -209,15 +202,11 @@ class DefeatAndCollectItemTask(DefeatEntitiesTask):
         *,
         item_field: str,
         chest_type: int = 0x07,
-        chest_reward: float = 0.2,
-        collect_reward: float = 5.0,
         **kwargs: Any,
     ) -> None:
         super().__init__(target_types, **kwargs)
         self.item_field = item_field
         self.chest_type = int(chest_type)
-        self.chest_reward = float(chest_reward)
-        self.collect_reward = float(collect_reward)
         self._initial_item = 0
         self._chest_seen = False
 
@@ -249,14 +238,13 @@ class DefeatAndCollectItemTask(DefeatEntitiesTask):
         collected = self._item_collected(current)
         was_collected = self._item_collected(previous)
         success = self._cleared and self._item_received(current)
-        reward = result.reward
+        signals = dict(result.info["reward_signals"])
         if first_chest:
-            reward += self.chest_reward
+            signals["chest_revealed"] = 1.0
         if collected and not was_collected:
-            reward += self.collect_reward
+            signals["item_collected"] = 1.0
 
-        info = self._info(current, success=success, failure=None)
-        return TaskStep(reward=reward, terminated=success, info=info)
+        return self._result(current, signals, success=success, failure=None)
 
     def _success_condition(self, state: GameState) -> bool:
         return self._item_received(state)

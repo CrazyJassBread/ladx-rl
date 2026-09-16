@@ -16,8 +16,8 @@ Every event is a JSON-safe dictionary:
 {"type": "player_damaged", "frame": 42, "data": {"amount": 8}}
 ```
 
-`EVENT_REWARDS` is the small default event-to-reward table. Real experiments
-can pass a replacement function:
+`EVENT_REWARDS` is the small default event-to-reward table used by a bare
+`ZeldaEnv`. Direct users can pass a replacement function:
 
 ```python
 def reward(previous_state, current_state, events):
@@ -25,6 +25,10 @@ def reward(previous_state, current_state, events):
 
 env = ZeldaEnv(reward_fn=reward)
 ```
+
+PPO experiments use `TaskEnv`, which intentionally replaces that base reward
+with TOML-configured task rewards. See `docs/task_rewards.md`; do not edit
+`EVENT_REWARDS` when tuning a training task.
 
 Memory-address discovery does not run during training. The snapshot/diff tools
 under `zelda_env/utils/` help locate candidate addresses, which should be

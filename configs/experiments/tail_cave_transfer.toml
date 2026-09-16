@@ -33,101 +33,111 @@ eval_episodes = 20
 states = ["save_states/azle.gbc.tail_cave.r2.state"]
 expected_room = [1, 0, 22]
 noop_frames = [0, 0]
-
-[instances.room16_key_fixed.task]
-kind = "kill_and_collect"
-target_types = [32]
-drop_type = 48
+task_config = "configs/tasks/room16_key.toml"
 
 [instances.room16_key_train]
 states = ["save_states/azle.gbc.tail_cave.r2.state"]
 expected_room = [1, 0, 22]
 noop_frames = [0, 15]
-
-[instances.room16_key_train.task]
-kind = "kill_and_collect"
-target_types = [32]
-drop_type = 48
+task_config = "configs/tasks/room16_key.toml"
 
 [instances.room16_key_eval]
 states = ["save_states/azle.gbc.tail_cave.r2.state"]
 expected_room = [1, 0, 22]
 noop_frames = [16, 30]
-
-[instances.room16_key_eval.task]
-kind = "kill_and_collect"
-target_types = [32]
-drop_type = 48
+task_config = "configs/tasks/room16_key.toml"
 
 # Hardhat-removal skill, independent of the room's follow-up effect.
 [instances.room16_hardhats]
 states = ["save_states/azle.gbc.tail_cave.r2.state"]
 expected_room = [1, 0, 22]
 noop_frames = [0, 15]
-
-[instances.room16_hardhats.task]
-kind = "defeat_entities"
-target_types = [32]
+task_config = "configs/tasks/hardhat_removal.toml"
 
 [instances.room09_hardhat_train]
 states = ["save_states/azle.gbc.tail_cave.r11.state"]
 expected_room = [1, 0, 9]
 noop_frames = [0, 15]
-
-[instances.room09_hardhat_train.task]
-kind = "defeat_entities"
-target_types = [32]
+task_config = "configs/tasks/hardhat_removal.toml"
 
 [instances.room09_hardhat_eval]
 states = ["save_states/azle.gbc.tail_cave.r27.state"]
 expected_room = [1, 0, 9]
 noop_frames = [16, 30]
-
-[instances.room09_hardhat_eval.task]
-kind = "defeat_entities"
-target_types = [32]
+task_config = "configs/tasks/hardhat_removal.toml"
 
 # Train on two kill-all rooms and hold out a third room and enemy mechanic.
 [instances.room12_keese]
 states = ["save_states/azle.gbc.tail_cave.r5.state"]
 expected_room = [1, 0, 18]
 noop_frames = [0, 15]
-
-[instances.room12_keese.task]
-kind = "defeat_entities"
-target_types = [25]
+task_config = "configs/tasks/keese_clear.toml"
 
 [instances.room03_spiked_beetles]
 states = ["save_states/azle.gbc.tail_cave.r16.state"]
 expected_room = [1, 0, 3]
 noop_frames = [16, 30]
-
-[instances.room03_spiked_beetles.task]
-kind = "defeat_entities"
-target_types = [44]
+task_config = "configs/tasks/spiked_beetle_clear.toml"
 
 # Defeat the four hiding Zols in room 0x15 and open the Compass chest.
 [instances.room15_compass_train]
 states = ["save_states/azle.gbc.tail_cave.r3.state"]
 expected_room = [1, 0, 21]
 noop_frames = [0, 15]
-
-[instances.room15_compass_train.task]
-kind = "defeat_and_collect_item"
-target_types = [155]
-item_field = "dungeon_compass"
-chest_type = 7
+task_config = "configs/tasks/room15_compass.toml"
 
 [instances.room15_compass_eval]
 states = ["save_states/azle.gbc.tail_cave.r3.state"]
 expected_room = [1, 0, 21]
 noop_frames = [16, 30]
+task_config = "configs/tasks/room15_compass.toml"
 
-[instances.room15_compass_eval.task]
-kind = "defeat_and_collect_item"
-target_types = [155]
-item_field = "dungeon_compass"
-chest_type = 7
+# Step on the floor switch in room 0x13, then open its revealed key chest.
+[instances.room13_switch_chest_train]
+states = ["save_states/azle.gbc.tail_cave.r4.state"]
+expected_room = [1, 0, 19]
+noop_frames = [0, 15]
+max_episode_steps = 1200
+task_config = "configs/tasks/room13_switch_chest.toml"
+action_names = [
+  "NOOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B",
+  "UP_A", "DOWN_A", "LEFT_A", "RIGHT_A",
+]
+
+[instances.room13_switch_chest_eval]
+states = ["save_states/azle.gbc.tail_cave.r4.state"]
+expected_room = [1, 0, 19]
+noop_frames = [16, 30]
+max_episode_steps = 1200
+task_config = "configs/tasks/room13_switch_chest.toml"
+action_names = [
+  "NOOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B",
+  "UP_A", "DOWN_A", "LEFT_A", "RIGHT_A",
+]
+
+# Curriculum stage 1: the same room, terminating as soon as the 24-frame
+# floor-switch hold completes.
+[instances.room13_press_switch_train]
+states = ["save_states/azle.gbc.tail_cave.r4.state"]
+expected_room = [1, 0, 19]
+noop_frames = [0, 15]
+max_episode_steps = 800
+task_config = "configs/tasks/room13_press_switch.toml"
+action_names = [
+  "NOOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B",
+  "UP_A", "DOWN_A", "LEFT_A", "RIGHT_A",
+]
+
+[instances.room13_press_switch_eval]
+states = ["save_states/azle.gbc.tail_cave.r4.state"]
+expected_room = [1, 0, 19]
+noop_frames = [16, 30]
+max_episode_steps = 800
+task_config = "configs/tasks/room13_press_switch.toml"
+action_names = [
+  "NOOP", "UP", "DOWN", "LEFT", "RIGHT", "A", "B",
+  "UP_A", "DOWN_A", "LEFT_A", "RIGHT_A",
+]
 
 [experiments."room16_key/fixed"]
 description = "Sanity check: learn and evaluate the full r2 task from one fixed state."
@@ -165,3 +175,22 @@ description = "Defeat four hiding Zols, open the central chest, and acquire the 
 train = ["room15_compass_train"]
 eval = ["room15_compass_eval"]
 total_timesteps = 2000000
+
+[experiments."room13_switch_chest/reset_jitter"]
+description = "Shaped scratch baseline: follow the safe route, press the switch, and open the key chest."
+train = ["room13_switch_chest_train"]
+eval = ["room13_switch_chest_eval"]
+total_timesteps = 2000000
+
+[experiments."room13_press_switch/curriculum"]
+description = "Curriculum stage 1: navigate around the pits and hold the floor switch for 24 frames."
+train = ["room13_press_switch_train"]
+eval = ["room13_press_switch_eval"]
+total_timesteps = 1000000
+
+[experiments."room13_switch_chest/curriculum_finetune"]
+description = "Curriculum stage 2: fine-tune the switch policy to reach and open the revealed chest."
+train = ["room13_switch_chest_train"]
+eval = ["room13_switch_chest_eval"]
+pretrained_from = "room13_press_switch/curriculum"
+total_timesteps = 1000000

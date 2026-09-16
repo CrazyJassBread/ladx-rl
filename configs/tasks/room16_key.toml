@@ -1,0 +1,13 @@
+kind = "kill_and_collect"
+target_types = [32] # ENTITY_HARDHAT_BEETLE
+drop_type = 48     # ENTITY_KEY_DROP_POINT
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+target_defeated = 1.0
+all_targets_cleared = 0.5
+key_drop_seen = 0.2
+key_collected = 5.0

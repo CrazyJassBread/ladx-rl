@@ -1,0 +1,23 @@
+kind = "press_switch_open_chest"
+chest_type = 7 # ENTITY_CHEST_WITH_ITEM
+success_stage = "switch"
+waypoint_tolerance = 8
+
+# Auxiliary curriculum stage: navigate to the upper corridor, remove the
+# Hardhat blocker, then learn the 24-frame button hold.
+blocking_hazard_types = [32] # ENTITY_HARDHAT_BEETLE
+switch_waypoints = [[82, 107], [36, 107], [36, 27], [84, 27]]
+post_hazard_waypoints = [[84, 27], [84, 59]]
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+pit_contact = -0.5
+fell_in_pit = -3.0
+route_progress = 0.01
+waypoint_reached = 0.25
+switch_hold_progress = 0.02
+blocking_hazard_removed = 1.0
+switch_pressed = 5.0

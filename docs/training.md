@@ -3,7 +3,8 @@
 The benchmark keeps the policy input pixel-only. RAM-derived `game_state` is
 privileged information used exclusively for reward, termination and metrics.
 Task logic lives under `zelda_env/tasks/`; room/state selection lives in
-`configs/experiments/tail_cave_transfer.toml`.
+`configs/experiments/tail_cave_transfer.toml`; reward weights live in
+`configs/tasks/*.toml`.
 
 ## Task and variant matrix
 
@@ -18,6 +19,9 @@ objective; the variant describes the training or evaluation condition.
 | `kill_all_transfer` | `room16_room12_to_room03` | Hardhat and Keese rooms | held-out Spiked Beetle room | Does multi-room training generalize to a new clear-room mechanic? |
 | `room09_hardhat` | `reset_jitter` | room `0x09` | held-out room `0x09` reset jitter | Does room `0x16` pretraining improve fine-tuning versus scratch? |
 | `room15_compass` | `reset_jitter` | four Hiding Zols in room `0x15` | held-out reset jitter in room `0x15` | Can PPO clear the room, open the chest, and acquire the Compass? |
+| `room13_press_switch` | `curriculum` | room `0x13`, stop after switch activation | held-out reset jitter | Can PPO navigate, remove the blocking Hardhat, and hold the switch? |
+| `room13_switch_chest` | `curriculum_finetune` | full room `0x13` task initialized from switch curriculum | held-out reset jitter | Can the learned switch policy extend to the chest? |
+| `room13_switch_chest` | `reset_jitter` | shaped scratch baseline | held-out reset jitter | How much does curriculum initialization improve learning? |
 
 `room16_key/reset_jitter` currently tests temporal variation because only one
 r2 save state exists. Add new r2 states to the `states` arrays to extend it to
@@ -116,6 +120,54 @@ flag to change. Success is delayed until the chest-item entity disappears, so
 the pickup animation/dialog must finish rather than merely starting the chest
 interaction. Leaving room `0x15` before completion is a failure.
 
+Train the r4 room `0x13` task as a two-stage curriculum. Stage 1 learns the
+safe route, Hardhat removal, and switch hold:
+
+```bash
+python scripts/train.py -e room13_press_switch/curriculum \
+  --device cuda --num-envs 8
+```
+
+Stage 2 loads the best switch policy and fine-tunes the complete task:
+
+```bash
+python scripts/train.py -e room13_switch_chest/curriculum_finetune \
+  --init-model artifacts/tail_cave/room13_press_switch/curriculum/best_model.zip \
+  --device cuda --num-envs 8
+python scripts/evaluate.py \
+  artifacts/tail_cave/room13_switch_chest/curriculum_finetune/best_model.zip \
+  -e room13_switch_chest/curriculum_finetune
+```
+
+The room event byte is `0x63`: `TRIGGER_STEP_ON_BUTTON |
+EFFECT_REVEAL_CHEST`. Disassembly at bank `02:7810-781D` shows that
+`wC1CA` must reach 24 consecutive frames before `wSwitchButtonPressed` becomes
+`0x60`; the task therefore rewards signed hold progress instead of treating
+the switch as a one-frame contact. `wRoomEventEffectExecuted` identifies the
+chest reveal, and the task succeeds only after the chest entity appears and
+`wSmallKeysCount` increases.
+
+The shaped route was validated against the real r4 state. It goes around the
+left side of the U-shaped pit to the upper corridor, pauses route shaping until
+the reset-time `ENTITY_HARDHAT_BEETLE` slot is removed, then continues to the
+button. The intended hazard-control action can push the Hardhat into a side
+pit. The two Gel entities remain dynamic interference but are not mandatory
+targets. After activation, the chest route returns to the upper corridor and
+approaches the chest from below via the right side; a direct approach from
+above is blocked.
+
+Pit contact is detected from `wLinkGroundStatus`/`wPitSlippingCounter`;
+entering `LINK_MOTION_FALLING_DOWN` is an immediate failure. Route coordinates,
+weights, and the auxiliary success stage are TOML settings. They supervise
+training through privileged RAM but are never included in the pixel policy
+observation. Full episodes are capped at 1,200 steps; the switch curriculum is
+capped at 800. Both use disjoint reset-jitter ranges.
+
+Both curriculum stages use the same reduced 11-action space so their PPO
+policy heads are checkpoint-compatible. Directional sword actions remain
+available for the Hardhat and Gels, while redundant direction-plus-shield
+actions are omitted; stationary `B` still exposes the shield.
+
 Each run writes `run.json`, a manifest snapshot, TensorBoard logs, periodic
 checkpoints, `best_model.zip`, and `final_model.zip`. State SHA-256 values are
 captured in `run.json`.
@@ -155,13 +207,19 @@ falling into pits without requiring their health byte to reach zero. The task
 then waits for `wSmallKeysCount` to increase; merely seeing the `0x30` key entity
 does not count as success.
 
-The default shaping is intentionally small and room-independent:
+Each instance references a task TOML file. The current shaping is intentionally
+small and room-independent:
 
 - `-0.001` per step;
 - `+1.0` once per removed target and `+0.5` when all targets are gone;
 - `+0.2` when the key first appears and `+5.0` when collected;
 - `-0.02` per health unit lost, `-2.0` on death;
 - `-1.0` and termination when leaving the task room.
+
+These values are no longer hard-coded in the task classes. See
+`docs/task_rewards.md` for the signal catalog, TOML schema, and per-step
+`reward_terms` diagnostics. Success and failure conditions remain independent
+of reward weights.
 
 START and SELECT are excluded from training, while observations remain four
 stacked RGB frames after the Stable-Baselines3 vector wrappers.

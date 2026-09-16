@@ -8,6 +8,7 @@
     {"id": "tail_cave_room09_train", "path": "save_states/azle.gbc.tail_cave.r11.state", "sha256": "a65e6ce601e3448b7d92313efe5ceea13b1ffbf993a355eeab21714e7237dbaa"},
     {"id": "tail_cave_room03_spiked_beetles", "path": "save_states/azle.gbc.tail_cave.r16.state", "sha256": "f3a2fc0d97c6e61126bb5828f902dbec7356adb72a672c308734c90ed762b22e"},
     {"id": "tail_cave_room09_eval", "path": "save_states/azle.gbc.tail_cave.r27.state", "sha256": "eb2ae2f4cef343da5301625cb50c9e6ba439d5677b5649fcde1f34b4fb6a10cc"},
-    {"id": "tail_cave_room15_compass", "path": "save_states/azle.gbc.tail_cave.r3.state", "sha256": "438146f3a3b970d45e135e295d5b14e0d20a5b93899d1f1d8364b74a906e3014"}
+    {"id": "tail_cave_room15_compass", "path": "save_states/azle.gbc.tail_cave.r3.state", "sha256": "438146f3a3b970d45e135e295d5b14e0d20a5b93899d1f1d8364b74a906e3014"},
+    {"id": "tail_cave_room13_switch_chest", "path": "save_states/azle.gbc.tail_cave.r4.state", "sha256": "fc4143bcc0c146ed43b68f2c3295063e90fc07db2afb7b04b803b306cc009438"}
   ]
 }

@@ -7,6 +7,8 @@ from pathlib import Path
 import tomllib
 from typing import Any
 
+from zelda_env.reward_signals import RewardComposer
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = PROJECT_ROOT / "configs" / "experiments" / "tail_cave_transfer.toml"
@@ -21,6 +23,7 @@ class InstanceConfig:
     frame_skip: int
     max_episode_steps: int
     action_names: tuple[str, ...]
+    task_config_path: Path
     task: dict[str, Any]
 
 
@@ -109,6 +112,15 @@ def _parse_instance(
     noops = tuple(int(value) for value in values.get("noop_frames", [0, 0]))
     if len(room) != 3 or len(noops) != 2:
         raise ValueError(f"Invalid room or noop range for instance {name}")
+    task_config_path = _project_path(values["task_config"])
+    if not task_config_path.is_file():
+        raise FileNotFoundError(f"Missing task config for {name}: {task_config_path}")
+    task = tomllib.loads(task_config_path.read_text(encoding="utf-8"))
+    if "kind" not in task or "reward" not in task:
+        raise ValueError(
+            f"Task config {task_config_path} must define 'kind' and a [reward] table"
+        )
+    RewardComposer(task["reward"])
     return InstanceConfig(
         name=name,
         state_paths=paths,
@@ -117,7 +129,8 @@ def _parse_instance(
         frame_skip=int(values.get("frame_skip", defaults["frame_skip"])),
         max_episode_steps=int(values.get("max_episode_steps", defaults["max_episode_steps"])),
         action_names=tuple(values.get("action_names", defaults["action_names"])),
-        task=dict(values["task"]),
+        task_config_path=task_config_path,
+        task=task,
     )
 
 

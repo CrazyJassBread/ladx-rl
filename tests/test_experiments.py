@@ -9,6 +9,8 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
         "room16_key/reset_jitter",
         "hardhat_transfer/room16_to_room09",
         "kill_all_transfer/room16_room12_to_room03",
+        "room12_keese_exit/reset_jitter",
+        "room0d_moldorm_rupees/reset_jitter",
         "room09_hardhat/reset_jitter",
         "room15_compass/reset_jitter",
         "room13_switch_chest/reset_jitter",
@@ -30,6 +32,12 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
     assert switch_chest.eval_instances == ("room13_switch_chest_eval",)
     curriculum = suite.experiment("room13_switch_chest/curriculum_finetune")
     assert curriculum.pretrained_from == "room13_press_switch/curriculum"
+    keese_exit = suite.experiment("room12_keese_exit/reset_jitter")
+    assert keese_exit.train_instances == ("room12_keese_exit_train",)
+    assert keese_exit.eval_instances == ("room12_keese_exit_eval",)
+    moldorm = suite.experiment("room0d_moldorm_rupees/reset_jitter")
+    assert moldorm.train_instances == ("room0d_moldorm_rupees_train",)
+    assert moldorm.eval_instances == ("room0d_moldorm_rupees_eval",)
 
 
 def test_pixel_policy_actions_exclude_menu_buttons():
@@ -65,3 +73,19 @@ def test_instances_load_reward_weights_from_separate_task_toml():
     assert press_switch.task["success_stage"] == "switch"
     assert press_switch.max_episode_steps == 800
     assert press_switch.action_names == switch_chest.action_names
+
+    keese_exit = suite.instances["room12_keese_exit_train"]
+    assert keese_exit.expected_room == (1, 0, 0x12)
+    assert keese_exit.max_episode_steps == 1200
+    assert keese_exit.task["kind"] == "defeat_and_exit"
+    assert keese_exit.task["expected_target_count"] == 4
+    assert keese_exit.task["target_room"] == [1, 0, 0x0D]
+    assert keese_exit.task["reward"]["destination_reached"] == 5.0
+
+    moldorm = suite.instances["room0d_moldorm_rupees_train"]
+    assert moldorm.expected_room == (1, 0, 0x0D)
+    assert moldorm.max_episode_steps == 1200
+    assert moldorm.task["kind"] == "defeat_and_collect_rupees"
+    assert moldorm.task["target_types"] == [0x29]
+    assert moldorm.task["expected_target_count"] == 1
+    assert moldorm.task["rupee_amount"] == 20

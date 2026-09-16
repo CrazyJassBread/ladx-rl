@@ -1,0 +1,13 @@
+kind = "defeat_and_exit"
+target_types = [25]         # ENTITY_KEESE
+expected_target_count = 4
+target_room = [1, 0, 13]   # room 0x0D, directly above room 0x12
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+target_defeated = 1.0
+all_targets_cleared = 0.5
+destination_reached = 5.0

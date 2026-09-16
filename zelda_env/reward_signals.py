@@ -18,6 +18,7 @@ REWARD_SIGNAL_NAMES = frozenset(
         "premature_room_exit",
         "target_defeated",
         "all_targets_cleared",
+        "destination_reached",
         "key_drop_seen",
         "key_collected",
         "switch_pressed",
@@ -28,6 +29,8 @@ REWARD_SIGNAL_NAMES = frozenset(
         "chest_revealed",
         "chest_opened",
         "item_collected",
+        "rupees_collected",
+        "dialog_completed",
         "pit_contact",
         "fell_in_pit",
     }

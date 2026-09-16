@@ -1,0 +1,16 @@
+kind = "defeat_and_collect_rupees"
+target_types = [41]         # ENTITY_MINI_MOLDORM
+expected_target_count = 1
+chest_type = 7              # ENTITY_CHEST_WITH_ITEM
+rupee_amount = 20           # CHEST_RUPEES_20
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+target_defeated = 1.0
+all_targets_cleared = 0.5
+chest_revealed = 0.2
+rupees_collected = 4.0
+dialog_completed = 1.0

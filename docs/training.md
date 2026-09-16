@@ -6,6 +6,13 @@ Task logic lives under `zelda_env/tasks/`; room/state selection lives in
 `configs/experiments/tail_cave_transfer.toml`; reward weights live in
 `configs/tasks/*.toml`.
 
+Python task modules are organized by reusable mechanic rather than room:
+`entity_task.py` tracks reset-time combat targets, `exit_task.py` handles
+post-clear navigation, `key_task.py` handles key drops, and `chest_task.py`
+owns the shared chest/reward/dialog lifecycle. Room-specific enemies, reward
+amounts, destinations, and save states remain declarative TOML settings. This
+keeps task semantics identical when the same skill is evaluated in a new room.
+
 ## Task and variant matrix
 
 Experiment names use `task/variant`. The task name groups the room and semantic
@@ -17,6 +24,8 @@ objective; the variant describes the training or evaluation condition.
 | `room16_key` | `reset_jitter` | no-op frames 0–15 | no-op frames 16–30 | Does the same task generalize beyond one exact emulator frame? |
 | `hardhat_transfer` | `room16_to_room09` | two Hardhats in room `0x16` | one Hardhat in room `0x09` | Does the Hardhat-removal skill transfer zero-shot? |
 | `kill_all_transfer` | `room16_room12_to_room03` | Hardhat and Keese rooms | held-out Spiked Beetle room | Does multi-room training generalize to a new clear-room mechanic? |
+| `room12_keese_exit` | `reset_jitter` | room `0x12`, no-op frames 0–15 | held-out no-op frames 16–30 | Can PPO defeat four Keese and leave through the upper door? |
+| `room0d_moldorm_rupees` | `reset_jitter` | room `0x0D`, no-op frames 0–15 | held-out no-op frames 16–30 | Can PPO defeat the Mini Moldorm and finish the 20-Rupee chest dialog? |
 | `room09_hardhat` | `reset_jitter` | room `0x09` | held-out room `0x09` reset jitter | Does room `0x16` pretraining improve fine-tuning versus scratch? |
 | `room15_compass` | `reset_jitter` | four Hiding Zols in room `0x15` | held-out reset jitter in room `0x15` | Can PPO clear the room, open the chest, and acquire the Compass? |
 | `room13_press_switch` | `curriculum` | room `0x13`, stop after switch activation | held-out reset jitter | Can PPO navigate, remove the blocking Hardhat, and hold the switch? |
@@ -37,6 +46,34 @@ python scripts/train.py --experiment room16_key/fixed --check
 
 `--check` restores every referenced state and verifies its real room and target
 entities before any training starts.
+
+For `tail_cave.r5.state`, the capture starts in room `0x12`. Train the complete
+clear-and-exit objective with:
+
+```bash
+python scripts/train.py -e room12_keese_exit/reset_jitter --check
+python scripts/train.py -e room12_keese_exit/reset_jitter --device cuda --num-envs 8
+```
+
+The task tracks exactly four reset-time `ENTITY_KEESE` slots. Defeating them
+opens the shutter doors through room event `0x21`; clearing the enemies alone
+does not end the episode. Success requires the RAM room tuple to change from
+`(1, 0, 0x12)` to `(1, 0, 0x0D)`, the room directly above it in the Tail Cave
+layout. Entering any other room is a failure.
+
+The `tail_cave.r6.state` capture starts in room `0x0D`. Its complete task is:
+
+```bash
+python scripts/train.py -e room0d_moldorm_rupees/reset_jitter --check
+python scripts/train.py -e room0d_moldorm_rupees/reset_jitter --device cuda --num-envs 8
+```
+
+The task tracks the single reset-time `ENTITY_MINI_MOLDORM` (`0x29`). Room
+event `0x61` reveals a chest after the enemy is defeated, and the room's chest
+table identifies its contents as `CHEST_RUPEES_20`. Success requires the Rupee
+counter to increase by at least 20 and the seen `ENTITY_CHEST_WITH_ITEM` to
+disappear after the item dialog closes. Merely starting the chest interaction
+does not terminate the episode.
 
 ## Train and evaluate
 

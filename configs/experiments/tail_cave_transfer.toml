@@ -73,6 +73,38 @@ expected_room = [1, 0, 18]
 noop_frames = [0, 15]
 task_config = "configs/tasks/keese_clear.toml"
 
+# Complete room 0x12: defeat all four Keese, then leave through the upper door
+# into room 0x0D. Train/eval use disjoint reset-time jitter ranges.
+[instances.room12_keese_exit_train]
+states = ["save_states/azle.gbc.tail_cave.r5.state"]
+expected_room = [1, 0, 18]
+noop_frames = [0, 15]
+max_episode_steps = 1200
+task_config = "configs/tasks/room12_keese_exit.toml"
+
+[instances.room12_keese_exit_eval]
+states = ["save_states/azle.gbc.tail_cave.r5.state"]
+expected_room = [1, 0, 18]
+noop_frames = [16, 30]
+max_episode_steps = 1200
+task_config = "configs/tasks/room12_keese_exit.toml"
+
+# r6 capture: defeat the Mini Moldorm in room 0x0D, open the revealed
+# 20-Rupee chest, and dismiss its item dialog.
+[instances.room0d_moldorm_rupees_train]
+states = ["save_states/azle.gbc.tail_cave.r6.state"]
+expected_room = [1, 0, 13]
+noop_frames = [0, 15]
+max_episode_steps = 1200
+task_config = "configs/tasks/room0d_moldorm_rupees.toml"
+
+[instances.room0d_moldorm_rupees_eval]
+states = ["save_states/azle.gbc.tail_cave.r6.state"]
+expected_room = [1, 0, 13]
+noop_frames = [16, 30]
+max_episode_steps = 1200
+task_config = "configs/tasks/room0d_moldorm_rupees.toml"
+
 [instances.room03_spiked_beetles]
 states = ["save_states/azle.gbc.tail_cave.r16.state"]
 expected_room = [1, 0, 3]
@@ -162,6 +194,18 @@ description = "Multi-room kill-all training with an unseen room and enemy type h
 train = ["room16_hardhats", "room12_keese"]
 eval = ["room03_spiked_beetles"]
 total_timesteps = 2000000
+
+[experiments."room12_keese_exit/reset_jitter"]
+description = "Defeat all four Keese in room 0x12, then enter room 0x0D through the upper door."
+train = ["room12_keese_exit_train"]
+eval = ["room12_keese_exit_eval"]
+total_timesteps = 1500000
+
+[experiments."room0d_moldorm_rupees/reset_jitter"]
+description = "Defeat the Mini Moldorm in room 0x0D, open the 20-Rupee chest, and finish its dialog."
+train = ["room0d_moldorm_rupees_train"]
+eval = ["room0d_moldorm_rupees_eval"]
+total_timesteps = 1500000
 
 [experiments."room09_hardhat/reset_jitter"]
 description = "Fine-tune the room 0x16 Hardhat policy on room 0x09 and compare with scratch."

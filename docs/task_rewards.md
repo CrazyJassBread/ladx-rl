@@ -41,6 +41,7 @@ task_config = "configs/tasks/room15_compass.toml"
 | `premature_room_exit` | `1` when leaving the task room before success |
 | `target_defeated` | Number of newly removed task-target slots |
 | `all_targets_cleared` | `1` once, when the last target is removed |
+| `destination_reached` | `1` when a task's required destination room is entered |
 | `key_drop_seen` | `1` once, when the configured key drop first appears |
 | `key_collected` | `1` when the small-key count first increases |
 | `switch_pressed` | `1` once, when the dungeon floor-switch flag becomes non-zero |
@@ -51,6 +52,8 @@ task_config = "configs/tasks/room15_compass.toml"
 | `chest_revealed` | `1` once, when the room-event effect is executed after pressing the switch |
 | `chest_opened` | `1` when a switch-chest task observes its small-key count increase |
 | `item_collected` | `1` when the configured inventory flag first increases |
+| `rupees_collected` | `1` once the configured Rupee increase has been reached |
+| `dialog_completed` | `1` after a seen chest-item entity disappears when its dialog closes |
 | `pit_contact` | `1` when Link first starts slipping over a pit |
 | `fell_in_pit` | `1` when Link enters the falling-down motion state |
 

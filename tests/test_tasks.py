@@ -2,11 +2,13 @@ from copy import deepcopy
 
 import pytest
 
-from zelda_env.tasks.entity_task import (
+from zelda_env.tasks.chest_task import (
     DefeatAndCollectItemTask,
-    DefeatEntitiesTask,
-    KillAndCollectTask,
+    DefeatAndCollectRupeesTask,
 )
+from zelda_env.tasks.entity_task import DefeatEntitiesTask
+from zelda_env.tasks.exit_task import DefeatAndExitTask
+from zelda_env.tasks.key_task import KillAndCollectTask
 from zelda_env.tasks.switch_task import PressSwitchOpenChestTask
 
 
@@ -56,6 +58,7 @@ def _state(
     x=82,
     y=127,
     room_event_executed=0,
+    rupees=0,
 ):
     return {
         "room": {"is_indoor": 1, "map_id": 0, "id": room},
@@ -67,7 +70,7 @@ def _state(
             "x": x,
             "y": y,
         },
-        "progress": {"small_keys": keys},
+        "progress": {"small_keys": keys, "rupees": rupees},
         "inventory": {"dungeon_compass": compass},
         "event_flags": {
             "switch_button_pressed": switch,
@@ -133,6 +136,85 @@ def test_leaving_the_start_room_is_a_failure():
     assert result.reward < 0
     assert result.info["reward_terms"]["premature_room_exit"] == -1.0
     assert result.terminated
+
+
+def test_defeat_and_exit_requires_all_targets_then_destination_room():
+    keese = [
+        {"slot": slot, "type": 0x19, "health": 1}
+        for slot in range(4)
+    ]
+    reward = {**BASE_REWARD, "destination_reached": 5.0}
+    task = DefeatAndExitTask(
+        [0x19],
+        target_room=[1, 0, 0x0D],
+        expected_target_count=4,
+        reward=reward,
+    )
+    initial = _state(entities=keese, room=0x12)
+    reset_info = task.reset(initial)
+
+    assert reset_info["targets_remaining"] == 4
+    assert reset_info["target_room"] == [1, 0, 0x0D]
+
+    cleared_state = _state(room=0x12)
+    cleared = task.step(initial, cleared_state, [])
+    assert not cleared.terminated
+    assert cleared.info["phase"] == "exit_room"
+    assert cleared.info["reward_terms"]["target_defeated"] == 4.0
+
+    destination = _state(room=0x0D)
+    completed = task.step(cleared_state, destination, [])
+    assert completed.terminated
+    assert completed.info["success"]
+    assert completed.info["phase"] == "complete"
+    assert completed.info["destination_reached"]
+    assert completed.info["reward_terms"]["destination_reached"] == 5.0
+
+
+def test_defeat_and_exit_rejects_early_or_wrong_room_exit():
+    keese = [
+        {"slot": slot, "type": 0x19, "health": 1}
+        for slot in range(4)
+    ]
+    reward = {**BASE_REWARD, "destination_reached": 5.0}
+    task = DefeatAndExitTask(
+        [0x19],
+        target_room=[1, 0, 0x0D],
+        expected_target_count=4,
+        reward=reward,
+    )
+    initial = _state(entities=keese, room=0x12)
+    task.reset(initial)
+
+    early = task.step(initial, _state(entities=keese, room=0x0D), [])
+    assert early.terminated
+    assert not early.info["success"]
+    assert not early.info["destination_reached"]
+    assert early.info["failure"] == "left_task_room"
+
+    task.reset(initial)
+    cleared_state = _state(room=0x12)
+    task.step(initial, cleared_state, [])
+    wrong_room = task.step(cleared_state, _state(room=0x13), [])
+    assert wrong_room.terminated
+    assert not wrong_room.info["success"]
+    assert wrong_room.info["failure"] == "left_task_room"
+
+
+def test_defeat_and_exit_validates_four_reset_time_targets():
+    task = DefeatAndExitTask(
+        [0x19],
+        target_room=[1, 0, 0x0D],
+        expected_target_count=4,
+        reward={**BASE_REWARD, "destination_reached": 5.0},
+    )
+    three_keese = [
+        {"slot": slot, "type": 0x19, "health": 1}
+        for slot in range(3)
+    ]
+
+    with pytest.raises(ValueError, match="found 3 targets, expected 4"):
+        task.reset(_state(entities=three_keese, room=0x12))
 
 
 def test_compass_task_waits_for_all_targets_and_chest_item():
@@ -225,6 +307,77 @@ def test_compass_task_allows_chest_interaction_before_final_target():
     assert received.info["phase"] == "defeat_targets"
     assert completed.terminated
     assert completed.info["success"]
+
+
+def test_rupee_chest_task_waits_for_twenty_rupees_and_dialog_completion():
+    moldorm = {"slot": 0, "type": 0x29, "health": 2}
+    reward = {
+        **BASE_REWARD,
+        "chest_revealed": 0.2,
+        "rupees_collected": 4.0,
+        "dialog_completed": 1.0,
+    }
+    task = DefeatAndCollectRupeesTask(
+        [0x29],
+        expected_target_count=1,
+        rupee_amount=20,
+        reward=reward,
+    )
+    initial = _state(entities=[moldorm], room=0x0D, rupees=41)
+    reset_info = task.reset(initial)
+    assert reset_info["targets_remaining"] == 1
+    assert reset_info["required_rupees"] == 20
+
+    cleared_state = _state(room=0x0D, rupees=41)
+    cleared = task.step(initial, cleared_state, [])
+    assert not cleared.terminated
+    assert cleared.info["phase"] == "open_chest"
+
+    chest = {"slot": 0, "type": 0x07, "health": 0}
+    dialog_state = _state(entities=[chest], room=0x0D, rupees=61)
+    opened = task.step(cleared_state, dialog_state, [])
+    assert not opened.terminated
+    assert opened.info["phase"] == "finish_dialog"
+    assert opened.info["rupees_gained"] == 20
+    assert opened.info["reward_terms"]["chest_revealed"] == 0.2
+    assert opened.info["reward_terms"]["rupees_collected"] == 4.0
+    assert not opened.info["dialog_completed"]
+
+    finished_state = _state(room=0x0D, rupees=61)
+    finished = task.step(dialog_state, finished_state, [])
+    assert finished.terminated
+    assert finished.info["success"]
+    assert finished.info["phase"] == "complete"
+    assert finished.info["dialog_completed"]
+    assert finished.info["reward_terms"]["dialog_completed"] == 1.0
+
+
+def test_rupee_chest_task_rejects_partial_reward_and_unseen_chest():
+    moldorm = {"slot": 0, "type": 0x29, "health": 2}
+    reward = {**BASE_REWARD, "rupees_collected": 4.0, "dialog_completed": 1.0}
+    initial = _state(entities=[moldorm], room=0x0D, rupees=41)
+    cleared_state = _state(room=0x0D, rupees=41)
+
+    partial_task = DefeatAndCollectRupeesTask(
+        [0x29], rupee_amount=20, reward=reward
+    )
+    partial_task.reset(initial)
+    partial_task.step(initial, cleared_state, [])
+    chest = {"slot": 0, "type": 0x07, "health": 0}
+    partial_state = _state(entities=[chest], room=0x0D, rupees=60)
+    partial = partial_task.step(cleared_state, partial_state, [])
+    assert not partial.terminated
+    assert not partial.info["rupees_collected"]
+
+    unseen_task = DefeatAndCollectRupeesTask(
+        [0x29], rupee_amount=20, reward=reward
+    )
+    unseen_task.reset(initial)
+    unseen_task.step(initial, cleared_state, [])
+    unseen = unseen_task.step(cleared_state, _state(room=0x0D, rupees=61), [])
+    assert not unseen.terminated
+    assert unseen.info["rupees_collected"]
+    assert not unseen.info["dialog_completed"]
 
 
 def test_switch_chest_task_requires_switch_reveal_and_key_collection():

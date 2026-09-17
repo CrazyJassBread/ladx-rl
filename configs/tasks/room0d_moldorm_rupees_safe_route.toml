@@ -1,0 +1,31 @@
+kind = "defeat_and_collect_rupees"
+target_types = [41]
+expected_target_count = 1
+chest_type = 7
+rupee_amount = 20
+
+# Route through the lower-right floor and the right-hand opening. These points
+# shape one bounded remaining-distance potential; they are not separate reward
+# milestones. The final chest point stays active until interaction begins.
+chest_waypoints = [[136, 112], [136, 72], [136, 48]]
+waypoint_tolerance = 6
+route_progress_mode = "remaining_path"
+fail_on_fall = true
+
+[reward]
+step = -0.001
+combat_step = -0.001
+post_clear_step = -0.002
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+pit_contact = -0.5
+fell_in_pit = -2.0
+target_approach = 0.005
+target_damaged = 0.25
+target_defeated = 1.0
+all_targets_cleared = 0.5
+route_progress = 0.005
+chest_revealed = 0.5
+rupees_collected = 4.0
+dialog_completed = 1.0

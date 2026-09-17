@@ -9,6 +9,7 @@ from zelda_env.tasks.chest_task import (
 from zelda_env.tasks.entity_task import DefeatEntitiesTask
 from zelda_env.tasks.exit_task import DefeatAndExitTask
 from zelda_env.tasks.key_task import KillAndCollectTask
+from zelda_env.tasks.pattern_task import MatchPatternAndCollectItemTask
 from zelda_env.tasks.switch_task import PressSwitchOpenChestTask
 
 
@@ -59,7 +60,15 @@ def _state(
     y=127,
     room_event_executed=0,
     rupees=0,
+    stone_beak=0,
+    dialog_state=0,
+    dialog_index=0,
+    dialog_index_hi=0,
 ):
+    copied_entities = deepcopy(entities or [])
+    for entity in copied_entities:
+        entity.setdefault("x", x)
+        entity.setdefault("y", y)
     return {
         "room": {"is_indoor": 1, "map_id": 0, "id": room},
         "player": {
@@ -71,13 +80,21 @@ def _state(
             "y": y,
         },
         "progress": {"small_keys": keys, "rupees": rupees},
-        "inventory": {"dungeon_compass": compass},
+        "inventory": {
+            "dungeon_compass": compass,
+            "dungeon_stone_beak": stone_beak,
+        },
+        "dialog": {
+            "state": dialog_state,
+            "index": dialog_index,
+            "index_hi": dialog_index_hi,
+        },
         "event_flags": {
             "switch_button_pressed": switch,
             "switch_button_hold_frames": switch_hold,
             "room_event_executed": room_event_executed,
         },
-        "entities": deepcopy(entities or []),
+        "entities": copied_entities,
     }
 
 
@@ -85,6 +102,24 @@ def _hardhats():
     return [
         {"slot": 1, "type": 0x20, "health": 4},
         {"slot": 2, "type": 0x20, "health": 4},
+    ]
+
+
+def _three_of_a_kind(states=(0, 0, 0), patterns=(0, 0, 0)):
+    return [
+        {
+            "slot": slot,
+            "type": 0x90,
+            "health": 32,
+            "state": state,
+            "direction": pattern,
+            "transition_countdown": 64 if state == 2 else 0,
+            "x": 40 + slot * 24,
+            "y": 48,
+        }
+        for slot, state, pattern in zip(
+            (0, 3, 4), states, patterns, strict=True
+        )
     ]
 
 
@@ -103,6 +138,49 @@ def test_entity_disappearance_counts_as_defeat_even_without_zero_health():
     assert not first.terminated
     assert finished.info["success"]
     assert finished.terminated
+
+
+def test_combat_shaping_rewards_active_approach_and_target_damage():
+    reward = {
+        **BASE_REWARD,
+        "combat_step": -0.001,
+        "target_approach": 0.005,
+        "target_damaged": 0.25,
+    }
+    task = DefeatEntitiesTask([0x29], reward=reward)
+    target = {"slot": 0, "type": 0x29, "health": 2, "x": 80, "y": 48}
+    initial = _state(entities=[target], x=40, y=48)
+    task.reset(initial)
+
+    moved_target = {**target, "health": 1, "x": 84}
+    approached_state = _state(entities=[moved_target], x=44, y=48)
+    approached = task.step(
+        initial,
+        approached_state,
+        [
+            {
+                "type": "entity_damaged",
+                "data": {"slot": 0, "entity_type": 0x29, "amount": 1},
+            },
+            {
+                "type": "monster_damaged",
+                "data": {"slot": 0, "entity_type": 0x29, "amount": 1},
+            },
+        ],
+    )
+
+    assert approached.info["reward_signals"]["target_approach"] == 4
+    assert approached.info["reward_terms"]["target_approach"] == 0.02
+    assert approached.info["reward_terms"]["target_damaged"] == 0.25
+    assert approached.info["target_damage_dealt"] == 1
+    assert approached.info["combat_steps"] == 1
+
+    # Target motion alone is not approach progress: both distances are measured
+    # against the same current target position.
+    target_moved_closer = {**moved_target, "x": 60}
+    idle_state = _state(entities=[target_moved_closer], x=44, y=48)
+    idle = task.step(approached_state, idle_state, [])
+    assert "target_approach" not in idle.info["reward_signals"]
 
 
 def test_key_task_waits_for_collection_after_targets_are_removed():
@@ -380,6 +458,153 @@ def test_rupee_chest_task_rejects_partial_reward_and_unseen_chest():
     assert not unseen.info["dialog_completed"]
 
 
+def test_rupee_chest_route_rewards_signed_progress_after_combat():
+    moldorm = {"slot": 0, "type": 0x29, "health": 2}
+    reward = {
+        **BASE_REWARD,
+        "route_progress": 0.01,
+        "waypoint_reached": 0.5,
+        "rupees_collected": 4.0,
+        "dialog_completed": 1.0,
+    }
+    task = DefeatAndCollectRupeesTask(
+        [0x29],
+        rupee_amount=20,
+        chest_waypoints=[[136, 48]],
+        waypoint_tolerance=16,
+        reward=reward,
+    )
+    initial = _state(entities=[moldorm], room=0x0D, x=72, y=48)
+    task.reset(initial)
+
+    approach_start = _state(room=0x0D, x=72, y=48)
+    cleared = task.step(initial, approach_start, [])
+    approached = task.step(
+        approach_start,
+        _state(room=0x0D, x=104, y=48),
+        [],
+    )
+    reached = task.step(
+        _state(room=0x0D, x=104, y=48),
+        _state(room=0x0D, x=120, y=48),
+        [],
+    )
+
+    assert cleared.info["phase"] == "open_chest"
+    assert cleared.info["chest_route_target"] == [136, 48]
+    assert approached.info["reward_signals"]["route_progress"] == 32
+    assert approached.info["reward_terms"]["route_progress"] == pytest.approx(0.32)
+    assert reached.info["reward_terms"]["waypoint_reached"] == 0.5
+    assert reached.info["chest_waypoint_index"] == 1
+    assert reached.info["chest_route_target"] is None
+
+
+def test_remaining_path_route_is_bounded_and_keeps_final_chest_target_active():
+    moldorm = {"slot": 0, "type": 0x29, "health": 2, "x": 56, "y": 48}
+    reward = {
+        **BASE_REWARD,
+        "route_progress": 0.005,
+        "rupees_collected": 4.0,
+        "dialog_completed": 1.0,
+    }
+    task = DefeatAndCollectRupeesTask(
+        [0x29],
+        rupee_amount=20,
+        chest_waypoints=[[72, 48], [136, 48]],
+        waypoint_tolerance=2,
+        route_progress_mode="remaining_path",
+        reward=reward,
+    )
+    initial = _state(entities=[moldorm], room=0x0D, x=40, y=48)
+    task.reset(initial)
+
+    cleared_state = _state(room=0x0D, x=40, y=48)
+    task.step(initial, cleared_state, [])
+    intermediate_state = _state(room=0x0D, x=72, y=48)
+    intermediate = task.step(cleared_state, intermediate_state, [])
+    adjacent_state = _state(room=0x0D, x=120, y=48)
+    adjacent = task.step(intermediate_state, adjacent_state, [])
+    retreated = task.step(
+        adjacent_state,
+        _state(room=0x0D, x=104, y=48),
+        [],
+    )
+
+    assert intermediate.info["reward_signals"]["route_progress"] == 32
+    assert intermediate.info["chest_waypoint_index"] == 1
+    assert adjacent.info["reward_signals"]["route_progress"] == 48
+    assert adjacent.info["chest_waypoint_index"] == 1
+    assert adjacent.info["chest_route_target"] == [136, 48]
+    assert retreated.info["reward_signals"]["route_progress"] == -16
+    # The two positive transitions exactly reduce the annotated remaining path
+    # by 80 pixels; no per-waypoint reward is added.
+    assert (
+        intermediate.info["reward_terms"]["route_progress"]
+        + adjacent.info["reward_terms"]["route_progress"]
+    ) == pytest.approx(0.4)
+
+
+def test_chest_task_penalizes_pit_contact_and_can_fail_on_fall():
+    moldorm = {"slot": 0, "type": 0x29, "health": 2}
+    reward = {
+        **BASE_REWARD,
+        "pit_contact": -0.5,
+        "fell_in_pit": -2.0,
+        "rupees_collected": 4.0,
+        "dialog_completed": 1.0,
+    }
+    task = DefeatAndCollectRupeesTask(
+        [0x29],
+        rupee_amount=20,
+        fail_on_fall=True,
+        reward=reward,
+    )
+    initial = _state(entities=[moldorm], room=0x0D)
+    task.reset(initial)
+    cleared_state = _state(room=0x0D)
+    task.step(initial, cleared_state, [])
+
+    slipping_state = _state(room=0x0D, ground=7, pit_counter=1)
+    slipping = task.step(cleared_state, slipping_state, [])
+    falling = task.step(
+        slipping_state,
+        _state(room=0x0D, motion=6, ground=7, pit_counter=2),
+        [],
+    )
+
+    assert slipping.info["reward_terms"]["pit_contact"] == -0.5
+    assert not slipping.terminated
+    assert falling.info["failure"] == "fell_in_pit"
+    assert falling.info["reward_terms"]["fell_in_pit"] == -2.0
+    assert falling.terminated
+
+
+def test_chest_route_rejects_invalid_waypoint_configuration():
+    with pytest.raises(ValueError, match="chest_waypoints"):
+        DefeatAndCollectRupeesTask(
+            [0x29],
+            rupee_amount=20,
+            chest_waypoints=[[136]],
+            reward=BASE_REWARD,
+        )
+
+    with pytest.raises(ValueError, match="waypoint_tolerance"):
+        DefeatAndCollectRupeesTask(
+            [0x29],
+            rupee_amount=20,
+            waypoint_tolerance=-1,
+            reward=BASE_REWARD,
+        )
+
+    with pytest.raises(ValueError, match="route_progress_mode"):
+        DefeatAndCollectRupeesTask(
+            [0x29],
+            rupee_amount=20,
+            route_progress_mode="unknown",
+            reward=BASE_REWARD,
+        )
+
+
 def test_switch_chest_task_requires_switch_reveal_and_key_collection():
     task = PressSwitchOpenChestTask(reward=SWITCH_CHEST_REWARD)
     initial = _state(room=0x13, keys=1)
@@ -506,3 +731,152 @@ def test_switch_task_pauses_route_until_blocking_hazard_is_removed():
     assert removed.info["blocking_hazards_remaining"] == 0
     assert removed.info["route_target"] == [84, 59]
     assert removed.info["reward_terms"]["blocking_hazard_removed"] == 1.0
+
+
+def _pattern_reward():
+    return {
+        "step": -0.001,
+        "damage_taken": -0.02,
+        "player_died": -2.0,
+        "premature_room_exit": -1.0,
+        "pattern_match_progress": 0.25,
+        "pattern_mismatch": -1.0,
+        "pattern_matched": 1.0,
+        "all_targets_cleared": 1.0,
+        "chest_revealed": 0.5,
+        "item_collected": 5.0,
+        "dialog_completed": 1.0,
+    }
+
+
+def test_pattern_progress_is_episode_bounded_and_mismatch_is_penalized():
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        valid_patterns=[0, 1, 2, 3],
+        success_stage="pattern",
+        item_field="dungeon_stone_beak",
+        reward=_pattern_reward(),
+    )
+    initial = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.reset(initial)
+
+    one = _state(
+        entities=_three_of_a_kind((2, 0, 0), (0, 0, 0)), room=0x0A
+    )
+    first = task.step(initial, one, [])
+    assert first.info["reward_signals"]["target_frozen"] == 1
+    assert first.info["reward_terms"]["pattern_match_progress"] == 0.25
+
+    two = _state(
+        entities=_three_of_a_kind((2, 2, 0), (0, 0, 0)), room=0x0A
+    )
+    second = task.step(one, two, [])
+    assert second.info["best_pattern_match"] == 2
+    assert second.info["reward_terms"]["pattern_match_progress"] == 0.25
+
+    wrong = _state(
+        entities=_three_of_a_kind((2, 2, 2), (0, 0, 1)), room=0x0A
+    )
+    mismatch = task.step(two, wrong, [])
+    assert mismatch.info["pattern_attempts"] == 1
+    assert mismatch.info["pattern_mismatches"] == 1
+    assert mismatch.info["reward_terms"]["pattern_mismatch"] == -1.0
+
+    moving = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.step(wrong, moving, [])
+    two_again = _state(
+        entities=_three_of_a_kind((2, 2, 0), (0, 0, 0)), room=0x0A
+    )
+    replayed = task.step(moving, two_again, [])
+    assert "pattern_match_progress" not in replayed.info["reward_terms"]
+
+    correct = _state(
+        entities=_three_of_a_kind((2, 2, 2), (0, 0, 0)), room=0x0A
+    )
+    matched = task.step(two_again, correct, [])
+    assert matched.info["best_pattern_match"] == 3
+    assert matched.info["pattern_matches"] == 1
+    assert matched.info["reward_terms"]["pattern_match_progress"] == 0.25
+    assert matched.info["reward_terms"]["pattern_matched"] == 1.0
+
+    cleared = task.step(correct, _state(room=0x0A), [])
+    assert cleared.terminated
+    assert cleared.info["success"]
+    assert cleared.info["phase"] == "complete"
+    assert cleared.info["reward_terms"]["all_targets_cleared"] == 1.0
+
+
+@pytest.mark.parametrize("pattern", range(4))
+def test_pattern_accepts_all_four_equal_patterns(pattern):
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        success_stage="pattern",
+        item_field="dungeon_stone_beak",
+        reward=_pattern_reward(),
+    )
+    initial = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.reset(initial)
+
+    matched_state = _state(
+        entities=_three_of_a_kind(
+            (2, 2, 2), (pattern, pattern, pattern)
+        ),
+        room=0x0A,
+    )
+    result = task.step(initial, matched_state, [])
+
+    assert result.info["pattern_mismatches"] == 0
+    assert result.info["pattern_matches"] == 1
+    assert result.info["best_pattern_match"] == 3
+    assert result.info["reward_terms"]["pattern_matched"] == 1.0
+    assert "pattern_mismatch" not in result.info["reward_terms"]
+
+
+def test_pattern_full_task_waits_for_stone_beak_dialog_completion():
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        valid_patterns=[0, 1, 2, 3],
+        item_field="dungeon_stone_beak",
+        hint_dialog_id=0x280,
+        reward=_pattern_reward(),
+    )
+    initial = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.reset(initial)
+
+    hint = _state(
+        entities=_three_of_a_kind(),
+        room=0x0A,
+        dialog_state=4,
+        dialog_index=0x80,
+        dialog_index_hi=2,
+    )
+    hinted = task.step(initial, hint, [])
+    assert hinted.info["owl_hint_seen"]
+    assert hinted.info["reward_signals"]["owl_hint_seen"] == 1
+
+    locked = _state(
+        entities=_three_of_a_kind((2, 2, 2), (1, 1, 1)), room=0x0A
+    )
+    task.step(hint, locked, [])
+    chest = {"slot": 0, "type": 0x07, "health": 0}
+    revealed_state = _state(entities=[chest], room=0x0A)
+    revealed = task.step(locked, revealed_state, [])
+    assert not revealed.terminated
+    assert revealed.info["chest_seen"]
+    assert revealed.info["reward_terms"]["chest_revealed"] == 0.5
+
+    item_state = _state(entities=[chest], room=0x0A, stone_beak=1)
+    collected = task.step(revealed_state, item_state, [])
+    assert not collected.terminated
+    assert collected.info["item_collected"]
+    assert not collected.info["dialog_completed"]
+    assert collected.info["reward_terms"]["item_collected"] == 5.0
+
+    completed = task.step(item_state, _state(room=0x0A, stone_beak=1), [])
+    assert completed.terminated
+    assert completed.info["success"]
+    assert completed.info["dialog_completed"]
+    assert completed.info["reward_terms"]["dialog_completed"] == 1.0

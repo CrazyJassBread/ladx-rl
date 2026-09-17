@@ -11,6 +11,7 @@ action_names = [
   "UP_B", "DOWN_B", "LEFT_B", "RIGHT_B",
 ]
 
+# PPO settings
 [ppo]
 policy = "CnnPolicy"
 n_steps = 512
@@ -104,6 +105,71 @@ expected_room = [1, 0, 13]
 noop_frames = [16, 30]
 max_episode_steps = 1200
 task_config = "configs/tasks/room0d_moldorm_rupees.toml"
+
+# Same success contract as the sparse baseline, with post-clear route
+# supervision toward the chest. Separate instances preserve the original
+# reset_jitter reward configuration for reproducible comparisons.
+[instances.room0d_moldorm_rupees_route_train]
+states = ["save_states/azle.gbc.tail_cave.r6.state"]
+expected_room = [1, 0, 13]
+noop_frames = [0, 15]
+max_episode_steps = 1200
+task_config = "configs/tasks/room0d_moldorm_rupees_route.toml"
+
+[instances.room0d_moldorm_rupees_route_eval]
+states = ["save_states/azle.gbc.tail_cave.r6.state"]
+expected_room = [1, 0, 13]
+noop_frames = [16, 30]
+max_episode_steps = 1200
+task_config = "configs/tasks/room0d_moldorm_rupees_route.toml"
+
+# Hazard-aware revision: broader monster-phase variation and a bounded safe
+# path potential. It remains separate from the first chest_route ablation.
+[instances.room0d_moldorm_rupees_safe_train]
+states = ["save_states/azle.gbc.tail_cave.r6.state"]
+expected_room = [1, 0, 13]
+noop_frames = [0, 60]
+max_episode_steps = 1200
+task_config = "configs/tasks/room0d_moldorm_rupees_safe_route.toml"
+
+[instances.room0d_moldorm_rupees_safe_eval]
+states = ["save_states/azle.gbc.tail_cave.r6.state"]
+expected_room = [1, 0, 13]
+noop_frames = [61, 120]
+max_episode_steps = 1200
+task_config = "configs/tasks/room0d_moldorm_rupees_safe_route.toml"
+
+# r10 capture: the Three-of-a-Kind enemies cycle through four patterns. A hit
+# freezes one enemy; all three must be frozen on the same accepted pattern.
+# Both train and eval ranges span a complete 64-frame pattern cycle while
+# remaining disjoint at reset.
+[instances.room0a_three_of_a_kind_pattern_train]
+states = ["save_states/azle.gbc.tail_cave.r10.state"]
+expected_room = [1, 0, 10]
+noop_frames = [0, 63]
+max_episode_steps = 1600
+task_config = "configs/tasks/room0a_three_of_a_kind_pattern.toml"
+
+[instances.room0a_three_of_a_kind_pattern_eval]
+states = ["save_states/azle.gbc.tail_cave.r10.state"]
+expected_room = [1, 0, 10]
+noop_frames = [64, 127]
+max_episode_steps = 1600
+task_config = "configs/tasks/room0a_three_of_a_kind_pattern.toml"
+
+[instances.room0a_three_of_a_kind_stone_beak_train]
+states = ["save_states/azle.gbc.tail_cave.r10.state"]
+expected_room = [1, 0, 10]
+noop_frames = [0, 63]
+max_episode_steps = 2200
+task_config = "configs/tasks/room0a_three_of_a_kind_stone_beak.toml"
+
+[instances.room0a_three_of_a_kind_stone_beak_eval]
+states = ["save_states/azle.gbc.tail_cave.r10.state"]
+expected_room = [1, 0, 10]
+noop_frames = [64, 127]
+max_episode_steps = 2200
+task_config = "configs/tasks/room0a_three_of_a_kind_stone_beak.toml"
 
 [instances.room03_spiked_beetles]
 states = ["save_states/azle.gbc.tail_cave.r16.state"]
@@ -205,6 +271,51 @@ total_timesteps = 1500000
 description = "Defeat the Mini Moldorm in room 0x0D, open the 20-Rupee chest, and finish its dialog."
 train = ["room0d_moldorm_rupees_train"]
 eval = ["room0d_moldorm_rupees_eval"]
+total_timesteps = 1500000
+
+[experiments."room0d_moldorm_rupees/chest_route"]
+description = "Scratch baseline with signed post-clear route shaping toward the room 0x0D chest."
+train = ["room0d_moldorm_rupees_route_train"]
+eval = ["room0d_moldorm_rupees_route_eval"]
+total_timesteps = 1500000
+
+[experiments."room0d_moldorm_rupees/chest_route_finetune"]
+description = "Fine-tune the sparse room 0x0D combat policy with post-clear chest-route shaping."
+train = ["room0d_moldorm_rupees_route_train"]
+eval = ["room0d_moldorm_rupees_route_eval"]
+pretrained_from = "room0d_moldorm_rupees/reset_jitter"
+total_timesteps = 500000
+
+[experiments."room0d_moldorm_rupees/safe_route"]
+description = "Scratch baseline with pursuit shaping and a hazard-aware bounded chest-route potential."
+train = ["room0d_moldorm_rupees_safe_train"]
+eval = ["room0d_moldorm_rupees_safe_eval"]
+total_timesteps = 1500000
+
+[experiments."room0d_moldorm_rupees/safe_route_finetune"]
+description = "Fine-tune the sparse combat policy with pursuit and hazard-aware chest-route shaping."
+train = ["room0d_moldorm_rupees_safe_train"]
+eval = ["room0d_moldorm_rupees_safe_eval"]
+pretrained_from = "room0d_moldorm_rupees/reset_jitter"
+total_timesteps = 750000
+
+[experiments."room0a_three_of_a_kind/pattern_curriculum"]
+description = "Curriculum stage 1: freeze all three enemies on one accepted pattern."
+train = ["room0a_three_of_a_kind_pattern_train"]
+eval = ["room0a_three_of_a_kind_pattern_eval"]
+total_timesteps = 2000000
+
+[experiments."room0a_three_of_a_kind/full_scratch"]
+description = "Scratch baseline for matching the pattern, revealing the chest, and receiving the Stone Beak."
+train = ["room0a_three_of_a_kind_stone_beak_train"]
+eval = ["room0a_three_of_a_kind_stone_beak_eval"]
+total_timesteps = 3000000
+
+[experiments."room0a_three_of_a_kind/curriculum_finetune"]
+description = "Fine-tune the pattern policy to open the chest and finish the Stone Beak dialog."
+train = ["room0a_three_of_a_kind_stone_beak_train"]
+eval = ["room0a_three_of_a_kind_stone_beak_eval"]
+pretrained_from = "room0a_three_of_a_kind/pattern_curriculum"
 total_timesteps = 1500000
 
 [experiments."room09_hardhat/reset_jitter"]

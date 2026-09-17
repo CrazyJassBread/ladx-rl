@@ -38,6 +38,7 @@ PLAYER_ADDRESSES = {
 }
 INVENTORY_ADDRESSES = {
     "dungeon_compass": "wHasDungeonCompass",
+    "dungeon_stone_beak": "wHasDungeonStoneSlab",
     "flippers": "wHasFlippers",
     "medicine": "wHasMedicine",
     "seashells": "wSeashellsCount",
@@ -68,6 +69,15 @@ EVENT_FLAG_ADDRESSES = {
     "richard_spoken": "wRichardSpokenFlag",
     "bow_wow": "wIsBowWowFollowingLink",
 }
+DIALOG_ADDRESSES = {
+    "state": "wDialogState",
+    "index": "wDialogIndex",
+    "index_hi": "wDialogIndexHi",
+    "got_item": "wDialogGotItem",
+    "got_item_countdown": "wDialogGotItemCountdown",
+    "interaction_locked": "wDialogInteractionLocked",
+    "waiting_for_button": "wDialogIsWaitingForButtonPress",
+}
 ENTITY_TABLES = {
     "status": "wEntitiesStatusTable",
     "type": "wEntitiesTypeTable",
@@ -76,6 +86,9 @@ ENTITY_TABLES = {
     "z": "wEntitiesPosZTable",
     "health": "wEntitiesHealthTable",
     "direction": "wEntitiesDirectionTable",
+    "state": "wEntitiesStateTable",
+    "transition_countdown": "wEntitiesTransitionCountdownTable",
+    "ignore_hits_countdown": "wEntitiesIgnoreHitsCountdownTable",
     "room_id": "wEntitiesRoomTable",
 }
 
@@ -94,6 +107,7 @@ class GameState:
     inventory: dict[str, Any]
     progress: dict[str, int]
     event_flags: dict[str, int]
+    dialog: dict[str, int]
     entities: list[dict[str, int]]
     monsters: list[dict[str, int]]
 
@@ -143,6 +157,7 @@ class GameMemory:
                 "small_keys": self._read_symbol("wSmallKeysCount"),
             },
             "event_flags": self._read_fields(EVENT_FLAG_ADDRESSES),
+            "dialog": self._read_fields(DIALOG_ADDRESSES),
             "entities": entities,
             # A useful best-effort view. `entities` remains authoritative because
             # some NPCs and special objects also have a non-zero health byte.

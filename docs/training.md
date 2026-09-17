@@ -9,7 +9,8 @@ Task logic lives under `zelda_env/tasks/`; room/state selection lives in
 Python task modules are organized by reusable mechanic rather than room:
 `entity_task.py` tracks reset-time combat targets, `exit_task.py` handles
 post-clear navigation, `key_task.py` handles key drops, and `chest_task.py`
-owns the shared chest/reward/dialog lifecycle. Room-specific enemies, reward
+owns the shared chest/reward/dialog lifecycle. `pattern_task.py` handles
+timed multi-enemy pattern matching. Room-specific enemies, reward
 amounts, destinations, and save states remain declarative TOML settings. This
 keeps task semantics identical when the same skill is evaluated in a new room.
 
@@ -26,6 +27,13 @@ objective; the variant describes the training or evaluation condition.
 | `kill_all_transfer` | `room16_room12_to_room03` | Hardhat and Keese rooms | held-out Spiked Beetle room | Does multi-room training generalize to a new clear-room mechanic? |
 | `room12_keese_exit` | `reset_jitter` | room `0x12`, no-op frames 0–15 | held-out no-op frames 16–30 | Can PPO defeat four Keese and leave through the upper door? |
 | `room0d_moldorm_rupees` | `reset_jitter` | room `0x0D`, no-op frames 0–15 | held-out no-op frames 16–30 | Can PPO defeat the Mini Moldorm and finish the 20-Rupee chest dialog? |
+| `room0d_moldorm_rupees` | `chest_route` | shaped scratch run | held-out reset jitter | Does signed post-clear chest-route shaping solve the sparse second stage? |
+| `room0d_moldorm_rupees` | `chest_route_finetune` | initialize from the sparse combat policy | held-out reset jitter | Can the learned combat policy be extended efficiently to chest interaction? |
+| `room0d_moldorm_rupees` | `safe_route` | pursuit and safe-route shaping from scratch | monster phases 61–120 | Does bounded obstacle-aware shaping learn active pursuit and safe chest access? |
+| `room0d_moldorm_rupees` | `safe_route_finetune` | initialize from the sparse combat policy | monster phases 61–120 | Can the flawed combat policy be corrected without discarding its representation? |
+| `room0a_three_of_a_kind` | `pattern_curriculum` | r10, stop after the puzzle clears | disjoint full-cycle reset jitter | Can PPO learn target pursuit and correctly timed freezes? |
+| `room0a_three_of_a_kind` | `full_scratch` | complete r10 task from scratch | disjoint full-cycle reset jitter | Can one PPO policy solve the pattern and receive the Stone Beak? |
+| `room0a_three_of_a_kind` | `curriculum_finetune` | initialize from pattern curriculum | complete r10 task | Does mechanic pretraining improve the chest-and-dialog objective? |
 | `room09_hardhat` | `reset_jitter` | room `0x09` | held-out room `0x09` reset jitter | Does room `0x16` pretraining improve fine-tuning versus scratch? |
 | `room15_compass` | `reset_jitter` | four Hiding Zols in room `0x15` | held-out reset jitter in room `0x15` | Can PPO clear the room, open the chest, and acquire the Compass? |
 | `room13_press_switch` | `curriculum` | room `0x13`, stop after switch activation | held-out reset jitter | Can PPO navigate, remove the blocking Hardhat, and hold the switch? |
@@ -74,6 +82,105 @@ table identifies its contents as `CHEST_RUPEES_20`. Success requires the Rupee
 counter to increase by at least 20 and the seen `ENTITY_CHEST_WITH_ITEM` to
 disappear after the item dialog closes. Merely starting the chest interaction
 does not terminate the episode.
+
+The original `reset_jitter` configuration is retained as the sparse baseline.
+Its 1.5-million-step seed-0 run learned combat but not the second stage: at
+1.425 million steps all 20 evaluation episodes earned the combat-only return
+while success remained zero. Train the route-shaped scratch comparison with:
+
+```bash
+python scripts/train.py -e room0d_moldorm_rupees/chest_route \
+  --device cuda --num-envs 8
+```
+
+To extend the existing combat policy with less additional sampling, fine-tune
+it under the identical shaped task and keep the scratch run as the transfer
+baseline:
+
+```bash
+python scripts/train.py -e room0d_moldorm_rupees/chest_route_finetune \
+  --init-model artifacts/tail_cave/room0d_moldorm_rupees/reset_jitter/best_model.zip \
+  --output artifacts/tail_cave/room0d_moldorm_rupees/chest_route_finetune \
+  --device cuda --num-envs 8
+```
+
+The first `chest_route_finetune` run is retained as an ablation. It defeated
+the target in all 20 recorded evaluation episodes, but `chest_seen_rate`
+remained zero: direct Manhattan distance led toward the unsafe side of the
+barrier, and the one-shot proximity reward allowed the policy to stop there.
+
+The revised experiment uses a bounded remaining-path potential through the
+right-hand opening, with no reward weight on intermediate waypoint events. It
+also rewards active approach and target damage, penalizes extra combat and
+post-clear steps, fails on falling, and widens reset-time monster phases from
+0–15 to 0–60 for training with 61–120 held out for evaluation:
+
+```bash
+python scripts/train.py -e room0d_moldorm_rupees/safe_route_finetune \
+  --init-model artifacts/tail_cave/room0d_moldorm_rupees/reset_jitter/best_model.zip \
+  --output artifacts/tail_cave/room0d_moldorm_rupees/safe_route_finetune \
+  --device cuda --num-envs 8
+
+python scripts/train.py -e room0d_moldorm_rupees/safe_route \
+  --output artifacts/tail_cave/room0d_moldorm_rupees/safe_route \
+  --device cuda --num-envs 8
+```
+
+Evaluation reports `mean_target_damage_dealt`, `mean_combat_steps`,
+`chest_seen_rate`, `rupee_collection_rate`, `dialog_completion_rate`, and
+`terminal_phases`. Compare fine-tuning with the scratch run rather than
+treating initialization as the only result.
+
+## Room 0x0A Three-of-a-Kind
+
+The r10 state contains three `ENTITY_THREE_OF_A_KIND` targets (`0x90`). The
+disassembly confirms that a sword or shield hit changes a target to entity
+state `2`, freezing its current `direction` for a 64-frame countdown. Once all
+three countdowns finish, the room accepts any three equal direction values
+from `0` through `3`. Values `0` and `1` additionally force Heart and Rupee
+drops; values `2` and `3` destroy the enemies without a drop. The English 1.0
+ROM may retain the wrong-answer jingle for the latter two despite succeeding.
+
+Train the timing mechanic first:
+
+```bash
+python scripts/train.py -e room0a_three_of_a_kind/pattern_curriculum --check
+python scripts/train.py -e room0a_three_of_a_kind/pattern_curriculum \
+  --device cuda --num-envs 8
+```
+
+Then fine-tune the compatible PPO policy head on the complete objective:
+
+```bash
+python scripts/train.py -e room0a_three_of_a_kind/curriculum_finetune \
+  --init-model artifacts/tail_cave/room0a_three_of_a_kind/pattern_curriculum/best_model.zip \
+  --device cuda --num-envs 8
+```
+
+Keep the scratch comparison:
+
+```bash
+python scripts/train.py -e room0a_three_of_a_kind/full_scratch \
+  --device cuda --num-envs 8
+```
+
+Both reset ranges cover a complete 64-frame pattern cycle, so the split does
+not reserve an accepted color only for training. The pattern reward uses only
+episode-best same-pattern progress; failed attempts cannot repeatedly earn it.
+After the targets disappear, room event `0x61` reveals the room `0x0A` chest,
+whose chest table entry is `CHEST_STONE_BEAK`. Full success requires the
+direct `wHasDungeonStoneSlab` flag and then disappearance of the observed
+chest entity, which marks the end of its pickup animation/dialog.
+The full-task config uses one signed Manhattan potential to the chest's room
+object coordinate `(136, 48)`. The room floor is unobstructed, so this needs no
+hand-annotated intermediate waypoints, and retreat cancels prior progress.
+
+The owl statue opens `Dialog280` after the Stone Beak is owned. This is exposed
+as `owl_hint_seen` for diagnostics but is deliberately not rewarded or required:
+forcing it into the main objective would add an unnecessary detour and make
+the hint a privileged curriculum target rather than optional game information.
+Evaluation additionally reports `mean_best_pattern_match`,
+`mean_pattern_attempts`, `mean_pattern_mismatches`, and `owl_hint_seen_rate`.
 
 ## Train and evaluate
 

@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import Any
 
 from zelda_env.reward_signals import RewardComposer, transition_signals
 from zelda_env.tasks.base import EventList, GameState, Task, TaskStep
-
-
-PIT_GROUND_STATUS = 0x07
-FALLING_DOWN_MOTION_STATE = 0x06
+from zelda_env.tasks.hazards import FALLING_DOWN_MOTION_STATE, touching_pit
+from zelda_env.tasks.navigation import manhattan_distance, parse_waypoints
 
 
 class PressSwitchOpenChestTask(Task):
@@ -32,11 +30,11 @@ class PressSwitchOpenChestTask(Task):
         self.task_id = task_id
         self.chest_type = int(chest_type)
         self.rewards = RewardComposer(reward)
-        self.switch_waypoints = _parse_waypoints(switch_waypoints, "switch_waypoints")
-        self.post_hazard_waypoints = _parse_waypoints(
+        self.switch_waypoints = parse_waypoints(switch_waypoints, "switch_waypoints")
+        self.post_hazard_waypoints = parse_waypoints(
             post_hazard_waypoints, "post_hazard_waypoints"
         )
-        self.chest_waypoints = _parse_waypoints(chest_waypoints, "chest_waypoints")
+        self.chest_waypoints = parse_waypoints(chest_waypoints, "chest_waypoints")
         self.blocking_hazard_types = frozenset(int(value) for value in blocking_hazard_types)
         self.waypoint_tolerance = int(waypoint_tolerance)
         if self.waypoint_tolerance < 0:
@@ -68,7 +66,7 @@ class PressSwitchOpenChestTask(Task):
         self._switch_pressed = False
         self._chest_revealed = False
         self._chest_seen = False
-        self._pit_contact = self._touching_pit(state)
+        self._pit_contact = touching_pit(state)
         self._hazards = {
             entity["slot"]: entity["type"]
             for entity in state["entities"]
@@ -107,10 +105,10 @@ class PressSwitchOpenChestTask(Task):
         if failure is not None:
             return self._result(current, signals, success=False, failure=failure)
 
-        touching_pit = self._touching_pit(current)
-        if touching_pit and not self._pit_contact:
+        is_touching_pit = touching_pit(current)
+        if is_touching_pit and not self._pit_contact:
             signals["pit_contact"] = 1.0
-        self._pit_contact = touching_pit
+        self._pit_contact = is_touching_pit
 
         self._update_hazards(current, signals)
         self._add_route_signals(previous, current, signals)
@@ -161,8 +159,8 @@ class PressSwitchOpenChestTask(Task):
         if index >= len(waypoints):
             return
         target = waypoints[index]
-        previous_distance = _manhattan(previous["player"], target)
-        current_distance = _manhattan(current["player"], target)
+        previous_distance = manhattan_distance(previous["player"], target)
+        current_distance = manhattan_distance(current["player"], target)
         progress = previous_distance - current_distance
         if progress:
             signals["route_progress"] = float(progress)
@@ -193,13 +191,6 @@ class PressSwitchOpenChestTask(Task):
         if len(self._removed_hazards) < len(self._hazards):
             return None
         return "post_hazard", self.post_hazard_waypoints
-
-    def _touching_pit(self, state: GameState) -> bool:
-        player = state["player"]
-        return (
-            int(player["ground_status"]) == PIT_GROUND_STATUS
-            or int(player["pit_slipping_counter"]) > 0
-        )
 
     def _chest_visible(self, state: GameState) -> bool:
         return any(entity["type"] == self.chest_type for entity in state["entities"])
@@ -282,7 +273,7 @@ class PressSwitchOpenChestTask(Task):
             "initial_small_keys": self._initial_keys,
             "current_small_keys": current_keys,
             "chest_opened": current_keys > self._initial_keys,
-            "touching_pit": self._touching_pit(state),
+            "touching_pit": touching_pit(state),
             "motion_state": int(player["motion_state"]),
             "pit_slipping_counter": int(player["pit_slipping_counter"]),
         }
@@ -291,17 +282,3 @@ class PressSwitchOpenChestTask(Task):
 def _room_key(state: GameState) -> tuple[int, int, int]:
     room = state["room"]
     return room["is_indoor"], room["map_id"], room["id"]
-
-
-def _parse_waypoints(
-    values: Iterable[Iterable[int]],
-    name: str,
-) -> tuple[tuple[int, int], ...]:
-    waypoints = tuple(tuple(int(coordinate) for coordinate in value) for value in values)
-    if any(len(waypoint) != 2 for waypoint in waypoints):
-        raise ValueError(f"{name} entries must be [x, y] pairs")
-    return waypoints
-
-
-def _manhattan(player: Mapping[str, Any], target: tuple[int, int]) -> int:
-    return abs(int(player["x"]) - target[0]) + abs(int(player["y"]) - target[1])

@@ -7,6 +7,7 @@ from typing import Any
 
 from zelda_env.reward_signals import RewardComposer, transition_signals
 from zelda_env.tasks.base import EventList, GameState, Task, TaskStep
+from zelda_env.tasks.navigation import manhattan_distance
 
 
 class DefeatEntitiesTask(Task):
@@ -30,6 +31,8 @@ class DefeatEntitiesTask(Task):
         self.rewards = RewardComposer(reward)
         self._room: tuple[int, int, int] | None = None
         self._targets: dict[int, int] = {}
+        self._target_damage_dealt = 0
+        self._combat_steps = 0
         self._removed: set[int] = set()
         self._cleared = False
 
@@ -52,6 +55,8 @@ class DefeatEntitiesTask(Task):
                 f"expected {self.expected_target_count}"
             )
         self._removed = set()
+        self._target_damage_dealt = 0
+        self._combat_steps = 0
         self._cleared = False
         info = self._info(state, success=False, failure=None)
         info["reward_weights"] = dict(self.rewards.weights)
@@ -79,6 +84,34 @@ class DefeatEntitiesTask(Task):
                 success=success,
                 failure=None if success else "left_task_room",
             )
+
+        if not self._cleared:
+            self._combat_steps += 1
+            signals["combat_step"] = 1.0
+            self._add_target_approach_signal(previous, current, signals)
+
+        damage_by_slot: dict[int, int] = {}
+        for event in events:
+            if event["type"] not in {"entity_damaged", "monster_damaged"}:
+                continue
+            slot = int(event["data"]["slot"])
+            if (
+                slot not in self._targets
+                or int(event["data"]["entity_type"]) != self._targets[slot]
+            ):
+                continue
+            # The generic event detector emits both views for ordinary hits;
+            # max-per-slot avoids double counting while retaining the final hit
+            # that may only appear as monster_damaged when the entity vanishes.
+            damage_by_slot[slot] = max(
+                damage_by_slot.get(slot, 0), int(event["data"]["amount"])
+            )
+        damage = sum(damage_by_slot.values())
+        if damage:
+            self._target_damage_dealt += damage
+            signals["target_damaged"] = float(damage)
+
+        self._add_task_signals(previous, current, events, signals)
 
         active = {entity["slot"]: entity["type"] for entity in current["entities"]}
         removed_now = {
@@ -109,6 +142,42 @@ class DefeatEntitiesTask(Task):
 
     def _extra_info(self, state: GameState) -> dict[str, Any]:
         return {}
+
+    def _add_task_signals(
+        self,
+        previous: GameState,
+        current: GameState,
+        events: EventList,
+        signals: dict[str, float],
+    ) -> None:
+        """Hook for mechanic-specific transition signals."""
+
+    def _add_target_approach_signal(
+        self,
+        previous: GameState,
+        current: GameState,
+        signals: dict[str, float],
+    ) -> None:
+        active_targets = [
+            entity
+            for entity in current["entities"]
+            if entity["slot"] not in self._removed
+            and self._targets.get(entity["slot"]) == entity["type"]
+        ]
+        if not active_targets:
+            return
+        target = min(
+            active_targets,
+            key=lambda entity: manhattan_distance(
+                previous["player"], (int(entity["x"]), int(entity["y"]))
+            ),
+        )
+        target_position = int(target["x"]), int(target["y"])
+        progress = manhattan_distance(
+            previous["player"], target_position
+        ) - manhattan_distance(current["player"], target_position)
+        if progress:
+            signals["target_approach"] = float(progress)
 
     def _result(
         self,
@@ -143,6 +212,8 @@ class DefeatEntitiesTask(Task):
             "target_slots": sorted(self._targets),
             "targets_remaining": len(remaining),
             "remaining_slots": remaining,
+            "target_damage_dealt": self._target_damage_dealt,
+            "combat_steps": self._combat_steps,
             "success": success,
             "failure": failure,
             **self._extra_info(state),

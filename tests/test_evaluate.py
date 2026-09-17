@@ -33,9 +33,19 @@ class FakeEnv:
             "terminal_observation": terminal,
             "is_success": True,
             "task": {
+                "phase": "complete",
                 "target_slots": [0, 1],
                 "targets_remaining": 0,
+                "target_damage_dealt": 3,
+                "combat_steps": 12,
                 "key_collected": True,
+                "chest_seen": True,
+                "rupees_collected": True,
+                "dialog_completed": True,
+                "best_pattern_match": 3,
+                "pattern_attempts": 2,
+                "pattern_mismatches": 1,
+                "owl_hint_seen": True,
             },
         }
         return _observation(9), np.array([1.0]), np.array([True]), [info]
@@ -80,4 +90,14 @@ def test_evaluate_records_terminal_frame_instead_of_auto_reset(monkeypatch, tmp_
     assert saved["path"] == tmp_path / "A-room-episode-001.gif"
     assert saved["duration_ms"] == 67
     assert result["success_rate"] == 1.0
+    assert result["mean_target_damage_dealt"] == 3
+    assert result["mean_combat_steps"] == 12
+    assert result["chest_seen_rate"] == 1.0
+    assert result["rupee_collection_rate"] == 1.0
+    assert result["dialog_completion_rate"] == 1.0
+    assert result["mean_best_pattern_match"] == 3
+    assert result["mean_pattern_attempts"] == 2
+    assert result["mean_pattern_mismatches"] == 1
+    assert result["owl_hint_seen_rate"] == 1.0
+    assert result["terminal_phases"] == {"complete": 1}
     assert result["gifs"] == [str(saved["path"].resolve())]

@@ -8,6 +8,12 @@ from typing import Any
 
 from zelda_env.tasks.base import EventList, GameState, TaskStep
 from zelda_env.tasks.entity_task import DefeatEntitiesTask
+from zelda_env.tasks.hazards import FALLING_DOWN_MOTION_STATE, touching_pit
+from zelda_env.tasks.navigation import (
+    manhattan_distance,
+    parse_waypoints,
+    remaining_path_distance,
+)
 
 
 class DefeatAndOpenChestTask(DefeatEntitiesTask, ABC):
@@ -21,17 +27,37 @@ class DefeatAndOpenChestTask(DefeatEntitiesTask, ABC):
         target_types: Iterable[int],
         *,
         chest_type: int = 0x07,
+        chest_waypoints: Iterable[Iterable[int]] = (),
+        waypoint_tolerance: int = 8,
+        route_progress_mode: str = "segment",
+        fail_on_fall: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(target_types, **kwargs)
         self.chest_type = int(chest_type)
+        self.chest_waypoints = parse_waypoints(chest_waypoints, "chest_waypoints")
+        self.waypoint_tolerance = int(waypoint_tolerance)
+        if self.waypoint_tolerance < 0:
+            raise ValueError("waypoint_tolerance cannot be negative")
+        if route_progress_mode not in {"segment", "remaining_path"}:
+            raise ValueError(
+                "route_progress_mode must be 'segment' or 'remaining_path'"
+            )
+        if not isinstance(fail_on_fall, bool):
+            raise TypeError("fail_on_fall must be boolean")
+        self.route_progress_mode = route_progress_mode
+        self.fail_on_fall = fail_on_fall
         self._chest_seen = False
         self._dialog_completed = False
+        self._chest_waypoint_index = 0
+        self._pit_contact = False
 
     def reset(self, state: GameState) -> dict[str, Any]:
         self._reset_reward(state)
         self._chest_seen = False
         self._dialog_completed = False
+        self._chest_waypoint_index = 0
+        self._pit_contact = touching_pit(state)
         return super().reset(state)
 
     def step(
@@ -55,6 +81,25 @@ class DefeatAndOpenChestTask(DefeatEntitiesTask, ABC):
         self._dialog_completed |= completed_now
 
         signals = dict(result.info["reward_signals"])
+        is_touching_pit = touching_pit(current)
+        if is_touching_pit and not self._pit_contact:
+            signals["pit_contact"] = 1.0
+        self._pit_contact = is_touching_pit
+
+        falling = int(current["player"]["motion_state"]) == FALLING_DOWN_MOTION_STATE
+        if falling:
+            signals["fell_in_pit"] = 1.0
+            if self.fail_on_fall:
+                return self._result(
+                    current,
+                    signals,
+                    success=False,
+                    failure="fell_in_pit",
+                )
+
+        if self._cleared and not self._chest_seen:
+            signals["post_clear_step"] = 1.0
+        self._add_chest_route_signals(previous, current, signals)
         if first_chest:
             signals["chest_revealed"] = 1.0
         if collected and not was_collected:
@@ -76,14 +121,75 @@ class DefeatAndOpenChestTask(DefeatEntitiesTask, ABC):
         return "open_chest" if self._cleared else "defeat_targets"
 
     def _extra_info(self, state: GameState) -> dict[str, Any]:
+        route_target = self._chest_route_target()
         return {
             "chest_type": self.chest_type,
             "chest_seen": self._chest_seen,
+            "chest_waypoint_index": self._chest_waypoint_index,
+            "chest_route_target": (
+                list(route_target) if route_target is not None else None
+            ),
+            "route_progress_mode": self.route_progress_mode,
+            "touching_pit": touching_pit(state),
+            "motion_state": int(state["player"]["motion_state"]),
             **self._reward_info(state),
         }
 
     def _chest_visible(self, state: GameState) -> bool:
         return any(entity["type"] == self.chest_type for entity in state["entities"])
+
+    def _add_chest_route_signals(
+        self,
+        previous: GameState,
+        current: GameState,
+        signals: dict[str, float],
+    ) -> None:
+        target = self._chest_route_target()
+        if target is None or self._chest_seen:
+            return
+        if self.route_progress_mode == "remaining_path":
+            self._add_remaining_path_progress(previous, current, signals)
+            return
+        previous_distance = manhattan_distance(previous["player"], target)
+        current_distance = manhattan_distance(current["player"], target)
+        progress = previous_distance - current_distance
+        if progress:
+            signals["route_progress"] = float(progress)
+        if current_distance <= self.waypoint_tolerance:
+            self._chest_waypoint_index += 1
+            signals["waypoint_reached"] = 1.0
+
+    def _add_remaining_path_progress(
+        self,
+        previous: GameState,
+        current: GameState,
+        signals: dict[str, float],
+    ) -> None:
+        previous_distance = remaining_path_distance(
+            previous["player"], self.chest_waypoints, self._chest_waypoint_index
+        )
+        reached = 0
+        # Intermediate annotations only select the safe route. The final point
+        # remains active until the chest interaction entity is actually seen.
+        while self._chest_waypoint_index < len(self.chest_waypoints) - 1:
+            target = self.chest_waypoints[self._chest_waypoint_index]
+            if manhattan_distance(current["player"], target) > self.waypoint_tolerance:
+                break
+            self._chest_waypoint_index += 1
+            reached += 1
+        current_distance = remaining_path_distance(
+            current["player"], self.chest_waypoints, self._chest_waypoint_index
+        )
+        progress = previous_distance - current_distance
+        if progress:
+            signals["route_progress"] = float(progress)
+        if reached:
+            signals["waypoint_reached"] = float(reached)
+
+    def _chest_route_target(self) -> tuple[int, int] | None:
+        if not self._cleared or self._chest_waypoint_index >= len(self.chest_waypoints):
+            return None
+        return self.chest_waypoints[self._chest_waypoint_index]
 
     @abstractmethod
     def _reset_reward(self, state: GameState) -> None:
@@ -106,6 +212,7 @@ class DefeatAndCollectItemTask(DefeatAndOpenChestTask):
     """Defeat reset-time targets and finish receiving a chest inventory item."""
 
     reward_signal = "item_collected"
+    completion_signal = "dialog_completed"
 
     def __init__(
         self,
@@ -142,6 +249,7 @@ class DefeatAndCollectItemTask(DefeatAndOpenChestTask):
             "current_item_value": current_item,
             "item_collected": current_item > self._initial_item,
             "item_received": self._dialog_completed,
+            "dialog_completed": self._dialog_completed,
         }
 
 

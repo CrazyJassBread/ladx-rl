@@ -18,7 +18,6 @@ def main() -> int:
     parser.add_argument(
         "--experiment",
         "-e",
-        default="room16_key/fixed",
         help="Experiment in <task>/<variant> form (default: room16_key/fixed)",
     )
     parser.add_argument("--steps", type=int, help="Override the experiment timestep budget")

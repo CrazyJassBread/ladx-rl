@@ -33,6 +33,10 @@ def test_memory_table_builds_simple_game_state():
     emulator.data[symbols.resolve("wInventoryItems")] = 1
     emulator.data[symbols.resolve("wHasTailKey")] = 1
     emulator.data[symbols.resolve("wHasDungeonCompass")] = 1
+    emulator.data[symbols.resolve("wHasDungeonStoneSlab")] = 1
+    emulator.data[symbols.resolve("wDialogState")] = 4
+    emulator.data[symbols.resolve("wDialogIndex")] = 0x80
+    emulator.data[symbols.resolve("wDialogIndexHi")] = 2
     emulator.data[symbols.resolve("wRoomEvent")] = 0x42
     emulator.data[symbols.resolve("wSwitchButtonPressed")] = 0x60
     emulator.data[symbols.resolve("wC1CA")] = 17
@@ -41,6 +45,9 @@ def test_memory_table_builds_simple_game_state():
     emulator.data[symbols.resolve("wEntitiesPosXTable")] = 80
     emulator.data[symbols.resolve("wEntitiesPosYTable")] = 64
     emulator.data[symbols.resolve("wEntitiesHealthTable")] = 2
+    emulator.data[symbols.resolve("wEntitiesStateTable")] = 2
+    emulator.data[symbols.resolve("wEntitiesTransitionCountdownTable")] = 37
+    emulator.data[symbols.resolve("wEntitiesIgnoreHitsCountdownTable")] = 5
 
     state = GameMemory(emulator, symbols).game_state()
 
@@ -59,6 +66,10 @@ def test_memory_table_builds_simple_game_state():
     assert state["inventory"]["items"][0] == 1
     assert state["inventory"]["tail_key"] == 1
     assert state["inventory"]["dungeon_compass"] == 1
+    assert state["inventory"]["dungeon_stone_beak"] == 1
+    assert state["dialog"]["state"] == 4
+    assert state["dialog"]["index"] == 0x80
+    assert state["dialog"]["index_hi"] == 2
     assert state["event_flags"]["room_event"] == 0x42
     assert state["event_flags"]["switch_button_pressed"] == 0x60
     assert state["event_flags"]["switch_button_hold_frames"] == 17
@@ -67,6 +78,9 @@ def test_memory_table_builds_simple_game_state():
     assert state["monsters"][0]["x"] == 80
     assert state["monsters"][0]["y"] == 64
     assert state["monsters"][0]["health"] == 2
+    assert state["monsters"][0]["state"] == 2
+    assert state["monsters"][0]["transition_countdown"] == 37
+    assert state["monsters"][0]["ignore_hits_countdown"] == 5
 
 
 def test_read_state_returns_a_frozen_semantic_envelope_without_changing_legacy_dict():

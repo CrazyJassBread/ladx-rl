@@ -118,8 +118,18 @@ def _evaluate_instance(
     successes: list[bool] = []
     damage_taken: list[int] = []
     targets_defeated: list[int] = []
+    target_damage_dealt: list[int] = []
+    combat_steps: list[int] = []
     keys_collected: list[bool] = []
     items_collected: list[bool] = []
+    chests_seen: list[bool] = []
+    rupees_collected: list[bool] = []
+    dialogs_completed: list[bool] = []
+    best_pattern_matches: list[int] = []
+    pattern_attempts: list[int] = []
+    pattern_mismatches: list[int] = []
+    owl_hints_seen: list[bool] = []
+    terminal_phases: dict[str, int] = {}
     failures: dict[str, int] = {}
     current_damage = 0
     gif_paths: list[str] = []
@@ -159,10 +169,21 @@ def _evaluate_instance(
         targets_defeated.append(
             len(task.get("target_slots", [])) - task.get("targets_remaining", 0)
         )
+        target_damage_dealt.append(int(task.get("target_damage_dealt", 0)))
+        combat_steps.append(int(task.get("combat_steps", 0)))
         keys_collected.append(bool(task.get("key_collected", False)))
         items_collected.append(
             bool(task.get("item_received", task.get("item_collected", False)))
         )
+        chests_seen.append(bool(task.get("chest_seen", False)))
+        rupees_collected.append(bool(task.get("rupees_collected", False)))
+        dialogs_completed.append(bool(task.get("dialog_completed", False)))
+        best_pattern_matches.append(int(task.get("best_pattern_match", 0)))
+        pattern_attempts.append(int(task.get("pattern_attempts", 0)))
+        pattern_mismatches.append(int(task.get("pattern_mismatches", 0)))
+        owl_hints_seen.append(bool(task.get("owl_hint_seen", False)))
+        phase = str(task.get("phase", "unknown"))
+        terminal_phases[phase] = terminal_phases.get(phase, 0) + 1
         if failure:
             failures[failure] = failures.get(failure, 0) + 1
 
@@ -196,8 +217,18 @@ def _evaluate_instance(
         "mean_success_steps": mean(successful_steps) if successful_steps else None,
         "mean_damage_taken": mean(damage_taken),
         "mean_targets_defeated": mean(targets_defeated),
+        "mean_target_damage_dealt": mean(target_damage_dealt),
+        "mean_combat_steps": mean(combat_steps),
         "key_collection_rate": sum(keys_collected) / episodes,
         "item_collection_rate": sum(items_collected) / episodes,
+        "chest_seen_rate": sum(chests_seen) / episodes,
+        "rupee_collection_rate": sum(rupees_collected) / episodes,
+        "dialog_completion_rate": sum(dialogs_completed) / episodes,
+        "mean_best_pattern_match": mean(best_pattern_matches),
+        "mean_pattern_attempts": mean(pattern_attempts),
+        "mean_pattern_mismatches": mean(pattern_mismatches),
+        "owl_hint_seen_rate": sum(owl_hints_seen) / episodes,
+        "terminal_phases": terminal_phases,
         "failures": failures,
         "gifs": gif_paths,
     }

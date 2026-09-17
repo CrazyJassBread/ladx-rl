@@ -39,6 +39,14 @@ task_config = "configs/tasks/room15_compass.toml"
 | `damage_taken` | Health units lost during the transition |
 | `player_died` | `1` when current health reaches zero |
 | `premature_room_exit` | `1` when leaving the task room before success |
+| `combat_step` | `1` on each step before all reset-time targets are removed |
+| `post_clear_step` | `1` after combat clears and before chest interaction starts |
+| `target_approach` | Signed Link-distance improvement toward a live target, excluding target motion |
+| `target_damaged` | Health removed from configured target slots during the transition |
+| `target_frozen` | Number of pattern targets newly entering their frozen entity state |
+| `pattern_match_progress` | Increase in the episode-best count of frozen targets sharing an accepted pattern |
+| `pattern_mismatch` | `1` when every target is frozen but their patterns do not form an accepted match |
+| `pattern_matched` | `1` when every target is frozen on the same accepted pattern |
 | `target_defeated` | Number of newly removed task-target slots |
 | `all_targets_cleared` | `1` once, when the last target is removed |
 | `destination_reached` | `1` when a task's required destination room is entered |
@@ -54,6 +62,7 @@ task_config = "configs/tasks/room15_compass.toml"
 | `item_collected` | `1` when the configured inventory flag first increases |
 | `rupees_collected` | `1` once the configured Rupee increase has been reached |
 | `dialog_completed` | `1` after a seen chest-item entity disappears when its dialog closes |
+| `owl_hint_seen` | `1` once when the configured owl-hint dialog becomes active |
 | `pit_contact` | `1` when Link first starts slipping over a pit |
 | `fell_in_pit` | `1` when Link enters the falling-down motion state |
 
@@ -87,6 +96,48 @@ chest_waypoints = [[84, 27], [119, 27], [119, 66], [139, 66], [139, 58]]
 `route_progress` is signed, so moving away from a waypoint cancels prior
 approach reward rather than allowing oscillation farming. The route pauses at
 the upper corridor until the configured Hardhat slot disappears.
+
+For an obstacle-free room, a chest task can use the legacy single-segment
+mode. Room `0x0D` demonstrates why direct Manhattan distance is insufficient
+when an obstacle separates Link from the goal: approaching the wrong side of
+the barrier still looks like progress.
+
+The hazard-aware variant uses Manhattan distance along a short safe polyline:
+
+```toml
+chest_waypoints = [[136, 112], [136, 72], [136, 48]]
+waypoint_tolerance = 6
+route_progress_mode = "remaining_path"
+fail_on_fall = true
+
+[reward]
+route_progress = 0.005
+pit_contact = -0.5
+fell_in_pit = -2.0
+```
+
+`remaining_path` computes one potential: distance to the active point plus the
+Manhattan lengths of all remaining segments. Intermediate points receive no
+configured bonus. Adding an annotation therefore does not add another reward;
+the total positive shaping is bounded by the initial estimated path length
+times the `route_progress` weight. Moving backward gives the matching negative
+signal. The final chest point stays active until the chest interaction entity
+is observed, so proximity alone cannot finish the route.
+
+Combat pursuit uses the same anti-exploitation rule. `target_approach` compares
+the previous and current Link positions against the same current enemy
+position, so an enemy moving toward a stationary Link produces no reward.
+
+The Three-of-a-Kind task also bounds its temporal shaping. It reads the
+enemy's directly confirmed `state` and `direction` fields: state `2` means the
+enemy has been frozen by a hit, and directions `0` through `3` identify its
+four displayed patterns. Any of the four is valid when all three targets
+match; directions `0` and `1` only select guaranteed Heart and Rupee drops.
+`pattern_match_progress` is emitted only when the best
+same-pattern count for the entire episode increases. A failed attempt cannot
+reset and farm the same partial progress, while `pattern_mismatch` makes a
+fully frozen wrong combination costly. The owl dialog is diagnostic and has
+no reward weight in the r10 configs.
 
 Each training run records task-config SHA-256 values in `run.json` and copies
 the effective TOML files into the run's `task_configs/` directory.

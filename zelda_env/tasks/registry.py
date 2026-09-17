@@ -13,6 +13,7 @@ from zelda_env.tasks.chest_task import (
 from zelda_env.tasks.entity_task import DefeatEntitiesTask
 from zelda_env.tasks.exit_task import DefeatAndExitTask
 from zelda_env.tasks.key_task import KillAndCollectTask
+from zelda_env.tasks.pattern_task import MatchPatternAndCollectItemTask
 from zelda_env.tasks.switch_task import PressSwitchOpenChestTask
 
 
@@ -32,4 +33,6 @@ def make_task(config: Mapping[str, Any], *, task_id: str) -> Task:
         return DefeatAndCollectRupeesTask(**values)
     if kind == "press_switch_open_chest":
         return PressSwitchOpenChestTask(**values)
+    if kind == "match_pattern_and_collect_item":
+        return MatchPatternAndCollectItemTask(**values)
     raise ValueError(f"Unknown task kind: {kind}")

@@ -11,6 +11,13 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
         "kill_all_transfer/room16_room12_to_room03",
         "room12_keese_exit/reset_jitter",
         "room0d_moldorm_rupees/reset_jitter",
+        "room0d_moldorm_rupees/chest_route",
+        "room0d_moldorm_rupees/chest_route_finetune",
+        "room0d_moldorm_rupees/safe_route",
+        "room0d_moldorm_rupees/safe_route_finetune",
+        "room0a_three_of_a_kind/pattern_curriculum",
+        "room0a_three_of_a_kind/full_scratch",
+        "room0a_three_of_a_kind/curriculum_finetune",
         "room09_hardhat/reset_jitter",
         "room15_compass/reset_jitter",
         "room13_switch_chest/reset_jitter",
@@ -38,6 +45,30 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
     moldorm = suite.experiment("room0d_moldorm_rupees/reset_jitter")
     assert moldorm.train_instances == ("room0d_moldorm_rupees_train",)
     assert moldorm.eval_instances == ("room0d_moldorm_rupees_eval",)
+    moldorm_route = suite.experiment("room0d_moldorm_rupees/chest_route")
+    assert moldorm_route.train_instances == ("room0d_moldorm_rupees_route_train",)
+    assert moldorm_route.eval_instances == ("room0d_moldorm_rupees_route_eval",)
+    moldorm_finetune = suite.experiment("room0d_moldorm_rupees/chest_route_finetune")
+    assert moldorm_finetune.pretrained_from == "room0d_moldorm_rupees/reset_jitter"
+    moldorm_safe = suite.experiment("room0d_moldorm_rupees/safe_route")
+    assert moldorm_safe.train_instances == ("room0d_moldorm_rupees_safe_train",)
+    assert moldorm_safe.eval_instances == ("room0d_moldorm_rupees_safe_eval",)
+    moldorm_safe_finetune = suite.experiment(
+        "room0d_moldorm_rupees/safe_route_finetune"
+    )
+    assert moldorm_safe_finetune.pretrained_from == (
+        "room0d_moldorm_rupees/reset_jitter"
+    )
+    pattern = suite.experiment("room0a_three_of_a_kind/pattern_curriculum")
+    assert pattern.train_instances == ("room0a_three_of_a_kind_pattern_train",)
+    full = suite.experiment("room0a_three_of_a_kind/full_scratch")
+    assert full.eval_instances == ("room0a_three_of_a_kind_stone_beak_eval",)
+    pattern_finetune = suite.experiment(
+        "room0a_three_of_a_kind/curriculum_finetune"
+    )
+    assert pattern_finetune.pretrained_from == (
+        "room0a_three_of_a_kind/pattern_curriculum"
+    )
 
 
 def test_pixel_policy_actions_exclude_menu_buttons():
@@ -89,3 +120,42 @@ def test_instances_load_reward_weights_from_separate_task_toml():
     assert moldorm.task["target_types"] == [0x29]
     assert moldorm.task["expected_target_count"] == 1
     assert moldorm.task["rupee_amount"] == 20
+
+    moldorm_route = suite.instances["room0d_moldorm_rupees_route_train"]
+    assert moldorm_route.task_config_path.name == "room0d_moldorm_rupees_route.toml"
+    assert moldorm_route.task["chest_waypoints"] == [[136, 48]]
+    assert moldorm_route.task["waypoint_tolerance"] == 16
+    assert moldorm_route.task["reward"]["route_progress"] == 0.01
+    assert moldorm_route.task["reward"]["waypoint_reached"] == 0.5
+
+    moldorm_safe = suite.instances["room0d_moldorm_rupees_safe_train"]
+    assert moldorm_safe.noop_frames == (0, 60)
+    assert moldorm_safe.task_config_path.name == (
+        "room0d_moldorm_rupees_safe_route.toml"
+    )
+    assert moldorm_safe.task["chest_waypoints"] == [
+        [136, 112],
+        [136, 72],
+        [136, 48],
+    ]
+    assert moldorm_safe.task["route_progress_mode"] == "remaining_path"
+    assert moldorm_safe.task["fail_on_fall"] is True
+    assert "waypoint_reached" not in moldorm_safe.task["reward"]
+    assert moldorm_safe.task["reward"]["target_damaged"] == 0.25
+
+    pattern = suite.instances["room0a_three_of_a_kind_pattern_train"]
+    assert pattern.expected_room == (1, 0, 0x0A)
+    assert pattern.noop_frames == (0, 63)
+    assert pattern.task["kind"] == "match_pattern_and_collect_item"
+    assert pattern.task["target_types"] == [0x90]
+    assert pattern.task["valid_patterns"] == [0, 1, 2, 3]
+    assert pattern.task["success_stage"] == "pattern"
+    assert pattern.task["reward"]["pattern_mismatch"] == -1.0
+
+    full_pattern = suite.instances["room0a_three_of_a_kind_stone_beak_eval"]
+    assert full_pattern.noop_frames == (64, 127)
+    assert full_pattern.task["success_stage"] == "item"
+    assert full_pattern.task["item_field"] == "dungeon_stone_beak"
+    assert full_pattern.task["hint_dialog_id"] == 0x280
+    assert full_pattern.task["chest_waypoints"] == [[136, 48]]
+    assert full_pattern.task["route_progress_mode"] == "remaining_path"

@@ -1,0 +1,21 @@
+kind = "match_pattern_and_collect_item"
+target_types = [144] # ENTITY_THREE_OF_A_KIND
+expected_target_count = 3
+valid_patterns = [0, 1, 2, 3]
+frozen_state = 2
+success_stage = "pattern"
+item_field = "dungeon_stone_beak"
+chest_type = 7       # ENTITY_CHEST_WITH_ITEM
+hint_dialog_id = 640 # Dialog280, the Tail Cave owl hint
+
+[reward]
+step = -0.001
+combat_step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+target_approach = 0.003
+pattern_match_progress = 0.25
+pattern_mismatch = -1.0
+pattern_matched = 1.0
+all_targets_cleared = 1.0

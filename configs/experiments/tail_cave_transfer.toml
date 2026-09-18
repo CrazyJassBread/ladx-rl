@@ -147,13 +147,17 @@ task_config = "configs/tasks/room0d_moldorm_rupees_safe_route.toml"
 states = ["save_states/azle.gbc.tail_cave.r10.state"]
 expected_room = [1, 0, 10]
 noop_frames = [0, 63]
-max_episode_steps = 1600
-task_config = "configs/tasks/room0a_three_of_a_kind_pattern.toml"
+frame_skip = 2
+frame_stack = 8
+max_episode_steps = 1000
+task_config = "configs/tasks/room0a_three_of_a_kind_pattern_guided.toml"
 
 [instances.room0a_three_of_a_kind_pattern_eval]
 states = ["save_states/azle.gbc.tail_cave.r10.state"]
 expected_room = [1, 0, 10]
 noop_frames = [64, 127]
+frame_skip = 2
+frame_stack = 8
 max_episode_steps = 1600
 task_config = "configs/tasks/room0a_three_of_a_kind_pattern.toml"
 
@@ -161,6 +165,8 @@ task_config = "configs/tasks/room0a_three_of_a_kind_pattern.toml"
 states = ["save_states/azle.gbc.tail_cave.r10.state"]
 expected_room = [1, 0, 10]
 noop_frames = [0, 63]
+frame_skip = 2
+frame_stack = 8
 max_episode_steps = 2200
 task_config = "configs/tasks/room0a_three_of_a_kind_stone_beak.toml"
 
@@ -168,6 +174,8 @@ task_config = "configs/tasks/room0a_three_of_a_kind_stone_beak.toml"
 states = ["save_states/azle.gbc.tail_cave.r10.state"]
 expected_room = [1, 0, 10]
 noop_frames = [64, 127]
+frame_skip = 2
+frame_stack = 8
 max_episode_steps = 2200
 task_config = "configs/tasks/room0a_three_of_a_kind_stone_beak.toml"
 
@@ -237,6 +245,42 @@ action_names = [
   "UP_A", "DOWN_A", "LEFT_A", "RIGHT_A",
 ]
 
+# Side-scrolling room 0x19: defeat both Goombas on the lower floor, then
+# climb the left ladder and take its warp into room 0x03.
+[instances.room19_goomba_ladder_exit_train]
+states = ["save_states/azle.gbc.tail_cave.r17.state"]
+expected_room = [1, 0, 25]
+noop_frames = [0, 15]
+max_episode_steps = 1500
+task_config = "configs/tasks/room19_goomba_ladder_exit.toml"
+
+[instances.room19_goomba_ladder_exit_eval]
+states = ["save_states/azle.gbc.tail_cave.r17.state"]
+expected_room = [1, 0, 25]
+noop_frames = [16, 30]
+max_episode_steps = 1500
+task_config = "configs/tasks/room19_goomba_ladder_exit.toml"
+
+# Rolling Bones miniboss: frame_skip=2 preserves the timing needed to jump
+# over the moving bar; eight stacked frames retain the default time horizon.
+[instances.room11_rolling_bones_train]
+states = ["save_states/azle.gbc.tail_cave.r24.miniboss.state"]
+expected_room = [1, 0, 17]
+noop_frames = [0, 31]
+frame_skip = 2
+frame_stack = 8
+max_episode_steps = 1800
+task_config = "configs/tasks/room11_rolling_bones.toml"
+
+[instances.room11_rolling_bones_eval]
+states = ["save_states/azle.gbc.tail_cave.r24.miniboss.state"]
+expected_room = [1, 0, 17]
+noop_frames = [32, 63]
+frame_skip = 2
+frame_stack = 8
+max_episode_steps = 1800
+task_config = "configs/tasks/room11_rolling_bones.toml"
+
 [experiments."room16_key/fixed"]
 description = "Sanity check: learn and evaluate the full r2 task from one fixed state."
 train = ["room16_key_fixed"]
@@ -300,16 +344,18 @@ pretrained_from = "room0d_moldorm_rupees/reset_jitter"
 total_timesteps = 750000
 
 [experiments."room0a_three_of_a_kind/pattern_curriculum"]
-description = "Curriculum stage 1: freeze all three enemies on one accepted pattern."
+description = "Guided curriculum: anchor the first frozen pattern, reward consistent freezes, and fail fast on a mismatch."
 train = ["room0a_three_of_a_kind_pattern_train"]
 eval = ["room0a_three_of_a_kind_pattern_eval"]
 total_timesteps = 2000000
+ppo = { n_steps = 2048, batch_size = 256 }
 
 [experiments."room0a_three_of_a_kind/full_scratch"]
 description = "Scratch baseline for matching the pattern, revealing the chest, and receiving the Stone Beak."
 train = ["room0a_three_of_a_kind_stone_beak_train"]
 eval = ["room0a_three_of_a_kind_stone_beak_eval"]
 total_timesteps = 3000000
+ppo = { n_steps = 2048, batch_size = 256 }
 
 [experiments."room0a_three_of_a_kind/curriculum_finetune"]
 description = "Fine-tune the pattern policy to open the chest and finish the Stone Beak dialog."
@@ -317,6 +363,7 @@ train = ["room0a_three_of_a_kind_stone_beak_train"]
 eval = ["room0a_three_of_a_kind_stone_beak_eval"]
 pretrained_from = "room0a_three_of_a_kind/pattern_curriculum"
 total_timesteps = 1500000
+ppo = { n_steps = 2048, batch_size = 256 }
 
 [experiments."room09_hardhat/reset_jitter"]
 description = "Fine-tune the room 0x16 Hardhat policy on room 0x09 and compare with scratch."
@@ -349,3 +396,15 @@ train = ["room13_switch_chest_train"]
 eval = ["room13_switch_chest_eval"]
 pretrained_from = "room13_press_switch/curriculum"
 total_timesteps = 1000000
+
+[experiments."room19_goomba_ladder_exit/reset_jitter"]
+description = "Defeat both Goombas in side-scrolling room 0x19, then climb the left ladder into room 0x03."
+train = ["room19_goomba_ladder_exit_train"]
+eval = ["room19_goomba_ladder_exit_eval"]
+total_timesteps = 2000000
+
+[experiments."room11_rolling_bones/reset_jitter"]
+description = "Jump over Rolling Bones' moving bar and defeat the miniboss with the sword."
+train = ["room11_rolling_bones_train"]
+eval = ["room11_rolling_bones_eval"]
+total_timesteps = 2000000

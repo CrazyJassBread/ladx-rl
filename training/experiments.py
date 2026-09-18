@@ -21,6 +21,7 @@ class InstanceConfig:
     expected_room: tuple[int, int, int]
     noop_frames: tuple[int, int]
     frame_skip: int
+    frame_stack: int
     max_episode_steps: int
     action_names: tuple[str, ...]
     task_config_path: Path
@@ -35,6 +36,7 @@ class ExperimentConfig:
     eval_instances: tuple[str, ...]
     total_timesteps: int
     pretrained_from: str | None = None
+    ppo: dict[str, Any] | None = None
 
     @property
     def task_name(self) -> str:
@@ -67,7 +69,12 @@ def load_suite(path: str | Path = DEFAULT_MANIFEST) -> ExperimentSuite:
     defaults = data["defaults"]
 
     instances = {
-        name: _parse_instance(name, values, defaults)
+        name: _parse_instance(
+            name,
+            values,
+            defaults,
+            default_frame_stack=int(data["ppo"].get("frame_stack", 1)),
+        )
         for name, values in data["instances"].items()
     }
     experiments = {
@@ -78,6 +85,7 @@ def load_suite(path: str | Path = DEFAULT_MANIFEST) -> ExperimentSuite:
             eval_instances=tuple(values["eval"]),
             total_timesteps=int(values.get("total_timesteps", defaults["total_timesteps"])),
             pretrained_from=values.get("pretrained_from"),
+            ppo=dict(values.get("ppo", {})),
         )
         for name, values in data["experiments"].items()
     }
@@ -96,6 +104,12 @@ def load_suite(path: str | Path = DEFAULT_MANIFEST) -> ExperimentSuite:
                 f"Experiment {experiment.name} references unknown pretrained experiment "
                 f"{experiment.pretrained_from}"
             )
+        unknown_ppo = sorted(set(experiment.ppo or {}) - set(data["ppo"]))
+        if unknown_ppo:
+            raise ValueError(
+                f"Experiment {experiment.name} overrides unknown PPO setting "
+                f"{unknown_ppo[0]!r}"
+            )
     return ExperimentSuite(manifest_path, instances, experiments, dict(data["ppo"]))
 
 
@@ -103,6 +117,8 @@ def _parse_instance(
     name: str,
     values: dict[str, Any],
     defaults: dict[str, Any],
+    *,
+    default_frame_stack: int,
 ) -> InstanceConfig:
     paths = tuple(_project_path(value) for value in values["states"])
     missing = [path for path in paths if not path.is_file()]
@@ -121,12 +137,16 @@ def _parse_instance(
             f"Task config {task_config_path} must define 'kind' and a [reward] table"
         )
     RewardComposer(task["reward"])
+    frame_stack = int(values.get("frame_stack", default_frame_stack))
+    if frame_stack < 1:
+        raise ValueError(f"frame_stack must be positive for instance {name}")
     return InstanceConfig(
         name=name,
         state_paths=paths,
         expected_room=room,
         noop_frames=noops,
         frame_skip=int(values.get("frame_skip", defaults["frame_skip"])),
+        frame_stack=frame_stack,
         max_episode_steps=int(values.get("max_episode_steps", defaults["max_episode_steps"])),
         action_names=tuple(values.get("action_names", defaults["action_names"])),
         task_config_path=task_config_path,

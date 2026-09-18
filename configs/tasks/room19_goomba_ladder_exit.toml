@@ -1,0 +1,16 @@
+kind = "defeat_and_exit"
+target_types = [159]        # ENTITY_GOOMBA
+expected_target_count = 2
+target_room = [1, 0, 3]     # left ladder exits into Tail Cave room 0x03
+
+[reward]
+step = -0.001
+damage_taken = -0.02
+player_died = -2.0
+premature_room_exit = -1.0
+combat_step = -0.001
+target_approach = 0.005
+target_damaged = 0.25
+target_defeated = 1.0
+all_targets_cleared = 0.5
+destination_reached = 5.0

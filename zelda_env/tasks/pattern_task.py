@@ -28,6 +28,8 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
         valid_patterns: Iterable[int] = (0, 1, 2, 3),
         frozen_state: int = 2,
         success_stage: str = "item",
+        anchor_shaping: bool = False,
+        terminate_on_prefix_mismatch: bool = False,
         hint_dialog_id: int | None = None,
         reward: Mapping[str, Real],
         **kwargs: Any,
@@ -38,9 +40,19 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
         self.frozen_state = int(frozen_state)
         if success_stage not in {"pattern", "item"}:
             raise ValueError("success_stage must be 'pattern' or 'item'")
+        if not isinstance(anchor_shaping, bool):
+            raise TypeError("anchor_shaping must be a boolean")
+        if not isinstance(terminate_on_prefix_mismatch, bool):
+            raise TypeError("terminate_on_prefix_mismatch must be a boolean")
+        if terminate_on_prefix_mismatch and not anchor_shaping:
+            raise ValueError(
+                "terminate_on_prefix_mismatch requires anchor_shaping"
+            )
         if hint_dialog_id is not None and not 0 <= int(hint_dialog_id) <= 0xFFFF:
             raise ValueError("hint_dialog_id must be a 16-bit dialog id")
         self.success_stage = success_stage
+        self.anchor_shaping = anchor_shaping
+        self.terminate_on_prefix_mismatch = terminate_on_prefix_mismatch
         self.hint_dialog_id = (
             None if hint_dialog_id is None else int(hint_dialog_id)
         )
@@ -49,6 +61,10 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
         self._pattern_mismatches = 0
         self._pattern_matches = 0
         self._attempt_resolved = False
+        self._prefix_mismatch_seen = False
+        self._pattern_anchor_sets = 0
+        self._pattern_consistent_freezes = 0
+        self._pattern_prefix_mismatches = 0
         self._owl_hint_seen = False
         super().__init__(target_types, reward=reward, **kwargs)
 
@@ -68,6 +84,17 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
         self._pattern_mismatches = 0
         self._pattern_matches = 0
         self._attempt_resolved = False
+        initial_frozen = [
+            entity
+            for entity in target_entities
+            if int(entity["state"]) == self.frozen_state
+        ]
+        self._prefix_mismatch_seen = len(
+            {int(entity["direction"]) for entity in initial_frozen}
+        ) > 1
+        self._pattern_anchor_sets = 0
+        self._pattern_consistent_freezes = 0
+        self._pattern_prefix_mismatches = 0
         self._owl_hint_seen = self._is_hint_dialog(state)
         return super().reset(state)
 
@@ -78,6 +105,17 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
         events: EventList,
     ) -> TaskStep:
         result = super().step(previous, current, events)
+        if (
+            self.terminate_on_prefix_mismatch
+            and "pattern_prefix_mismatch" in result.info["reward_signals"]
+            and result.info["failure"] is None
+        ):
+            return self._result(
+                current,
+                dict(result.info["reward_signals"]),
+                success=False,
+                failure="pattern_prefix_mismatch",
+            )
         if (
             self.success_stage == "pattern"
             and self._cleared
@@ -114,12 +152,35 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
         if newly_frozen:
             signals["target_frozen"] = float(len(newly_frozen))
 
-        current_match = self._matching_frozen_count(current_targets.values())
-        if current_match > self._best_pattern_match:
-            signals["pattern_match_progress"] = float(
-                current_match - self._best_pattern_match
+        current_frozen = [
+            entity
+            for entity in current_targets.values()
+            if int(entity["state"]) == self.frozen_state
+        ]
+        if not current_frozen:
+            self._prefix_mismatch_seen = False
+
+        # Always expose anchor diagnostics, including in the unshaped
+        # evaluation task. Only the guided curriculum assigns them weights or
+        # terminates on a prefix mismatch.
+        self._add_anchor_signals(
+            previous_targets,
+            current_targets,
+            newly_frozen,
+            signals,
+        )
+        if self.anchor_shaping:
+            self._best_pattern_match = max(
+                self._best_pattern_match,
+                self._matching_frozen_count(current_targets.values()),
             )
-            self._best_pattern_match = current_match
+        else:
+            current_match = self._matching_frozen_count(current_targets.values())
+            if current_match > self._best_pattern_match:
+                signals["pattern_match_progress"] = float(
+                    current_match - self._best_pattern_match
+                )
+                self._best_pattern_match = current_match
 
         all_frozen = (
             len(current_targets) == len(self._targets)
@@ -200,9 +261,56 @@ class MatchPatternAndCollectItemTask(DefeatAndCollectItemTask):
             "pattern_attempts": self._pattern_attempts,
             "pattern_mismatches": self._pattern_mismatches,
             "pattern_matches": self._pattern_matches,
+            "anchor_shaping": self.anchor_shaping,
+            "terminate_on_prefix_mismatch": self.terminate_on_prefix_mismatch,
+            "pattern_anchor_sets": self._pattern_anchor_sets,
+            "pattern_consistent_freezes": self._pattern_consistent_freezes,
+            "pattern_prefix_mismatches": self._pattern_prefix_mismatches,
             "owl_hint_seen": self._owl_hint_seen,
             "hint_dialog_id": self.hint_dialog_id,
         }
+
+    def _add_anchor_signals(
+        self,
+        previous_targets: Mapping[int, dict[str, Any]],
+        current_targets: Mapping[int, dict[str, Any]],
+        newly_frozen: Iterable[int],
+        signals: dict[str, float],
+    ) -> None:
+        """Reward only freezes that preserve the first frozen pattern."""
+
+        prefix = [
+            int(entity["direction"])
+            for entity in previous_targets.values()
+            if int(entity["state"]) == self.frozen_state
+            and int(entity["direction"]) in self.valid_patterns
+        ]
+        for slot in sorted(newly_frozen):
+            pattern = int(current_targets[slot]["direction"])
+            if not prefix:
+                if pattern in self.valid_patterns:
+                    signals["pattern_anchor_set"] = (
+                        signals.get("pattern_anchor_set", 0.0) + 1.0
+                    )
+                    self._pattern_anchor_sets += 1
+                prefix.append(pattern)
+                continue
+
+            prefix_is_consistent = len(set(prefix)) == 1
+            if (
+                prefix_is_consistent
+                and pattern in self.valid_patterns
+                and pattern == prefix[0]
+            ):
+                signals["pattern_consistent_freeze"] = (
+                    signals.get("pattern_consistent_freeze", 0.0) + 1.0
+                )
+                self._pattern_consistent_freezes += 1
+            elif prefix_is_consistent and not self._prefix_mismatch_seen:
+                signals["pattern_prefix_mismatch"] = 1.0
+                self._pattern_prefix_mismatches += 1
+                self._prefix_mismatch_seen = True
+            prefix.append(pattern)
 
     def _target_entities(self, state: GameState) -> dict[int, dict[str, Any]]:
         return {

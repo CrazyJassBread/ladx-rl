@@ -116,7 +116,10 @@ def make_vec_env(
 
     env = SubprocVecEnv(factories) if worker_count > 1 else DummyVecEnv(factories)
     env = VecTransposeImage(env)
-    frame_stack = int(suite.ppo.get("frame_stack", 1))
+    frame_stacks = {suite.instances[name].frame_stack for name in names}
+    if len(frame_stacks) != 1:
+        raise ValueError("All instances in one vector environment need one frame_stack")
+    frame_stack = frame_stacks.pop()
     if frame_stack > 1:
         env = VecFrameStack(env, n_stack=frame_stack, channels_order="first")
     return env

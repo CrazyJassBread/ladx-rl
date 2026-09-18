@@ -11,6 +11,8 @@
     {"id": "tail_cave_room15_compass", "path": "save_states/azle.gbc.tail_cave.r3.state", "sha256": "438146f3a3b970d45e135e295d5b14e0d20a5b93899d1f1d8364b74a906e3014"},
     {"id": "tail_cave_room13_switch_chest", "path": "save_states/azle.gbc.tail_cave.r4.state", "sha256": "fc4143bcc0c146ed43b68f2c3295063e90fc07db2afb7b04b803b306cc009438"},
     {"id": "tail_cave_room0d_moldorm_rupees", "path": "save_states/azle.gbc.tail_cave.r6.state", "sha256": "26d6fc0e7980f2379bfb12d378f146be0da00d880af5914fa18b6656a7b45e2d"},
-    {"id": "tail_cave_room0a_three_of_a_kind", "path": "save_states/azle.gbc.tail_cave.r10.state", "sha256": "172c9843f69eeccbbbb8ddfcd785aae98195a2f67b08074e461812db5a425e2a"}
+    {"id": "tail_cave_room0a_three_of_a_kind", "path": "save_states/azle.gbc.tail_cave.r10.state", "sha256": "172c9843f69eeccbbbb8ddfcd785aae98195a2f67b08074e461812db5a425e2a"},
+    {"id": "tail_cave_room19_goombas", "path": "save_states/azle.gbc.tail_cave.r17.state", "sha256": "3e503b4d804562ac335ecd5cf7c1f78c13f6b5f2d533eb0f193182ae0dd7158b"},
+    {"id": "tail_cave_room11_rolling_bones", "path": "save_states/azle.gbc.tail_cave.r24.miniboss.state", "sha256": "8643241db618529c6ebc6e72bc75b43e054b8d4a7ea288dceb7137c494d8ce11"}
   ]
 }

@@ -45,6 +45,9 @@ class FakeEnv:
                 "best_pattern_match": 3,
                 "pattern_attempts": 2,
                 "pattern_mismatches": 1,
+                "pattern_anchor_sets": 2,
+                "pattern_consistent_freezes": 3,
+                "pattern_prefix_mismatches": 1,
                 "owl_hint_seen": True,
             },
         }
@@ -98,6 +101,9 @@ def test_evaluate_records_terminal_frame_instead_of_auto_reset(monkeypatch, tmp_
     assert result["mean_best_pattern_match"] == 3
     assert result["mean_pattern_attempts"] == 2
     assert result["mean_pattern_mismatches"] == 1
+    assert result["mean_pattern_anchor_sets"] == 2
+    assert result["mean_pattern_consistent_freezes"] == 3
+    assert result["mean_pattern_prefix_mismatches"] == 1
     assert result["owl_hint_seen_rate"] == 1.0
     assert result["terminal_phases"] == {"complete": 1}
     assert result["gifs"] == [str(saved["path"].resolve())]

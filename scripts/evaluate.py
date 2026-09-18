@@ -128,6 +128,9 @@ def _evaluate_instance(
     best_pattern_matches: list[int] = []
     pattern_attempts: list[int] = []
     pattern_mismatches: list[int] = []
+    pattern_anchor_sets: list[int] = []
+    pattern_consistent_freezes: list[int] = []
+    pattern_prefix_mismatches: list[int] = []
     owl_hints_seen: list[bool] = []
     terminal_phases: dict[str, int] = {}
     failures: dict[str, int] = {}
@@ -181,6 +184,13 @@ def _evaluate_instance(
         best_pattern_matches.append(int(task.get("best_pattern_match", 0)))
         pattern_attempts.append(int(task.get("pattern_attempts", 0)))
         pattern_mismatches.append(int(task.get("pattern_mismatches", 0)))
+        pattern_anchor_sets.append(int(task.get("pattern_anchor_sets", 0)))
+        pattern_consistent_freezes.append(
+            int(task.get("pattern_consistent_freezes", 0))
+        )
+        pattern_prefix_mismatches.append(
+            int(task.get("pattern_prefix_mismatches", 0))
+        )
         owl_hints_seen.append(bool(task.get("owl_hint_seen", False)))
         phase = str(task.get("phase", "unknown"))
         terminal_phases[phase] = terminal_phases.get(phase, 0) + 1
@@ -227,6 +237,9 @@ def _evaluate_instance(
         "mean_best_pattern_match": mean(best_pattern_matches),
         "mean_pattern_attempts": mean(pattern_attempts),
         "mean_pattern_mismatches": mean(pattern_mismatches),
+        "mean_pattern_anchor_sets": mean(pattern_anchor_sets),
+        "mean_pattern_consistent_freezes": mean(pattern_consistent_freezes),
+        "mean_pattern_prefix_mismatches": mean(pattern_prefix_mismatches),
         "owl_hint_seen_rate": sum(owl_hints_seen) / episodes,
         "terminal_phases": terminal_phases,
         "failures": failures,

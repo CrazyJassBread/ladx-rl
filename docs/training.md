@@ -141,7 +141,12 @@ from `0` through `3`. Values `0` and `1` additionally force Heart and Rupee
 drops; values `2` and `3` destroy the enemies without a drop. The English 1.0
 ROM may retain the wrong-answer jingle for the latter two despite succeeding.
 
-Train the timing mechanic first:
+Train the timing mechanic first. The training instance uses curriculum-only
+anchor shaping: the first frozen enemy selects the target pattern, each later
+matching freeze is rewarded immediately, and the episode fails as soon as a
+newly frozen enemy disagrees with that anchor. The policy observation remains
+pixel-only. Evaluation deliberately uses the original task without this early
+failure rule, so success still measures the unmodified game mechanic:
 
 ```bash
 python scripts/train.py -e room0a_three_of_a_kind/pattern_curriculum --check
@@ -165,8 +170,16 @@ python scripts/train.py -e room0a_three_of_a_kind/full_scratch \
 ```
 
 Both reset ranges cover a complete 64-frame pattern cycle, so the split does
-not reserve an accepted color only for training. The pattern reward uses only
-episode-best same-pattern progress; failed attempts cannot repeatedly earn it.
+not reserve an accepted color only for training. Room 0x0A uses
+`frame_skip = 2` and eight stacked frames because each pattern lasts only 16
+game frames; the finer action cadence reduces aliasing between the displayed
+pattern and the delayed sword or shield collision. Anchor feedback is emitted
+only when an enemy first enters frozen state `2`, so holding an action or
+remaining in the same state cannot repeatedly earn it. A prefix such as
+`[0, 1, 1]` remains a mismatch and receives no majority-count progress.
+The curriculum also overrides PPO's rollout size to 2,048 transitions. With
+the documented eight workers this yields 256 steps per environment per update,
+rather than reducing each trajectory fragment to 64 steps.
 After the targets disappear, room event `0x61` reveals the room `0x0A` chest,
 whose chest table entry is `CHEST_STONE_BEAK`. Full success requires the
 direct `wHasDungeonStoneSlab` flag and then disappearance of the observed

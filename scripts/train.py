@@ -66,9 +66,10 @@ def main() -> int:
 
     from training.sb3 import rollout_layout
 
+    ppo_config = {**suite.ppo, **(experiment.ppo or {})}
     try:
         num_envs, n_steps = rollout_layout(
-            int(suite.ppo["n_steps"]),
+            int(ppo_config["n_steps"]),
             len(experiment.train_instances),
             args.num_envs,
         )
@@ -99,6 +100,7 @@ def _train(
     from training.sb3 import device_info, make_vec_env, resolve_device
 
     experiment = suite.experiment(experiment_name)
+    ppo_config = {**suite.ppo, **(experiment.ppo or {})}
     device = resolve_device(args.device)
     selected_device_info = device_info(device)
     device_description = selected_device_info["device"]
@@ -115,7 +117,7 @@ def _train(
 
     ppo_values = {
         key: value
-        for key, value in suite.ppo.items()
+        for key, value in ppo_config.items()
         if key not in {"frame_stack", "eval_freq", "checkpoint_freq", "eval_episodes"}
     }
     ppo_values["n_steps"] = n_steps
@@ -147,14 +149,14 @@ def _train(
         )
 
     checkpoint = CheckpointCallback(
-        save_freq=max(int(suite.ppo["checkpoint_freq"]) // num_envs, 1),
+        save_freq=max(int(ppo_config["checkpoint_freq"]) // num_envs, 1),
         save_path=str(output / "checkpoints"),
         name_prefix="ppo",
     )
     evaluate = EvalCallback(
         eval_env,
-        n_eval_episodes=int(suite.ppo["eval_episodes"]),
-        eval_freq=max(int(suite.ppo["eval_freq"]) // num_envs, 1),
+        n_eval_episodes=int(ppo_config["eval_episodes"]),
+        eval_freq=max(int(ppo_config["eval_freq"]) // num_envs, 1),
         best_model_save_path=str(output),
         log_path=str(output / "evaluation"),
         deterministic=True,
@@ -245,6 +247,7 @@ def _write_run_metadata(
         "num_envs": num_envs,
         "n_steps_per_env": n_steps,
         "rollout_size": num_envs * n_steps,
+        "ppo": {**suite.ppo, **(experiment.ppo or {})},
         "train_instances": experiment.train_instances,
         "eval_instances": experiment.eval_instances,
         "state_sha256": {

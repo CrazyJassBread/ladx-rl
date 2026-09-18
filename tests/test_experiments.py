@@ -23,6 +23,8 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
         "room13_switch_chest/reset_jitter",
         "room13_press_switch/curriculum",
         "room13_switch_chest/curriculum_finetune",
+        "room19_goomba_ladder_exit/reset_jitter",
+        "room11_rolling_bones/reset_jitter",
     }
     transfer = suite.experiment("HARDHAT_TRANSFER/ROOM16_TO_ROOM09")
     assert transfer.train_instances == ("room16_hardhats",)
@@ -42,6 +44,16 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
     keese_exit = suite.experiment("room12_keese_exit/reset_jitter")
     assert keese_exit.train_instances == ("room12_keese_exit_train",)
     assert keese_exit.eval_instances == ("room12_keese_exit_eval",)
+    goomba_exit = suite.experiment("room19_goomba_ladder_exit/reset_jitter")
+    assert goomba_exit.train_instances == (
+        "room19_goomba_ladder_exit_train",
+    )
+    assert goomba_exit.eval_instances == (
+        "room19_goomba_ladder_exit_eval",
+    )
+    rolling_bones = suite.experiment("room11_rolling_bones/reset_jitter")
+    assert rolling_bones.train_instances == ("room11_rolling_bones_train",)
+    assert rolling_bones.eval_instances == ("room11_rolling_bones_eval",)
     moldorm = suite.experiment("room0d_moldorm_rupees/reset_jitter")
     assert moldorm.train_instances == ("room0d_moldorm_rupees_train",)
     assert moldorm.eval_instances == ("room0d_moldorm_rupees_eval",)
@@ -61,14 +73,17 @@ def test_tail_cave_suite_defines_all_transfer_experiments():
     )
     pattern = suite.experiment("room0a_three_of_a_kind/pattern_curriculum")
     assert pattern.train_instances == ("room0a_three_of_a_kind_pattern_train",)
+    assert pattern.ppo == {"n_steps": 2048, "batch_size": 256}
     full = suite.experiment("room0a_three_of_a_kind/full_scratch")
     assert full.eval_instances == ("room0a_three_of_a_kind_stone_beak_eval",)
+    assert full.ppo == {"n_steps": 2048, "batch_size": 256}
     pattern_finetune = suite.experiment(
         "room0a_three_of_a_kind/curriculum_finetune"
     )
     assert pattern_finetune.pretrained_from == (
         "room0a_three_of_a_kind/pattern_curriculum"
     )
+    assert pattern_finetune.ppo == {"n_steps": 2048, "batch_size": 256}
 
 
 def test_pixel_policy_actions_exclude_menu_buttons():
@@ -113,6 +128,32 @@ def test_instances_load_reward_weights_from_separate_task_toml():
     assert keese_exit.task["target_room"] == [1, 0, 0x0D]
     assert keese_exit.task["reward"]["destination_reached"] == 5.0
 
+    goomba_exit = suite.instances["room19_goomba_ladder_exit_train"]
+    assert goomba_exit.expected_room == (1, 0, 0x19)
+    assert goomba_exit.noop_frames == (0, 15)
+    assert goomba_exit.max_episode_steps == 1500
+    assert goomba_exit.task_config_path.name == (
+        "room19_goomba_ladder_exit.toml"
+    )
+    assert goomba_exit.task["kind"] == "defeat_and_exit"
+    assert goomba_exit.task["target_types"] == [0x9F]
+    assert goomba_exit.task["expected_target_count"] == 2
+    assert goomba_exit.task["target_room"] == [1, 0, 0x03]
+    assert goomba_exit.task["reward"]["destination_reached"] == 5.0
+
+    rolling_bones = suite.instances["room11_rolling_bones_train"]
+    assert rolling_bones.expected_room == (1, 0, 0x11)
+    assert rolling_bones.noop_frames == (0, 31)
+    assert rolling_bones.frame_skip == 2
+    assert rolling_bones.frame_stack == 8
+    assert rolling_bones.max_episode_steps == 1800
+    assert rolling_bones.task_config_path.name == "room11_rolling_bones.toml"
+    assert rolling_bones.task["kind"] == "rolling_bones"
+    assert rolling_bones.task["target_types"] == [0x81]
+    assert rolling_bones.task["bar_type"] == 0x82
+    assert rolling_bones.task["max_rewarded_bar_dodges"] == 3
+    assert rolling_bones.task["reward"]["bar_dodged"] == 0.25
+
     moldorm = suite.instances["room0d_moldorm_rupees_train"]
     assert moldorm.expected_room == (1, 0, 0x0D)
     assert moldorm.max_episode_steps == 1200
@@ -150,10 +191,27 @@ def test_instances_load_reward_weights_from_separate_task_toml():
     assert pattern.task["target_types"] == [0x90]
     assert pattern.task["valid_patterns"] == [0, 1, 2, 3]
     assert pattern.task["success_stage"] == "pattern"
-    assert pattern.task["reward"]["pattern_mismatch"] == -1.0
+    assert pattern.frame_skip == 2
+    assert pattern.frame_stack == 8
+    assert pattern.max_episode_steps == 1000
+    assert pattern.task_config_path.name == (
+        "room0a_three_of_a_kind_pattern_guided.toml"
+    )
+    assert pattern.task["anchor_shaping"] is True
+    assert pattern.task["terminate_on_prefix_mismatch"] is True
+    assert pattern.task["reward"]["pattern_consistent_freeze"] == 0.5
+    assert pattern.task["reward"]["pattern_prefix_mismatch"] == -0.1
+
+    pattern_eval = suite.instances["room0a_three_of_a_kind_pattern_eval"]
+    assert pattern_eval.frame_skip == 2
+    assert pattern_eval.frame_stack == 8
+    assert "anchor_shaping" not in pattern_eval.task
+    assert pattern_eval.task["reward"]["pattern_mismatch"] == -1.0
 
     full_pattern = suite.instances["room0a_three_of_a_kind_stone_beak_eval"]
     assert full_pattern.noop_frames == (64, 127)
+    assert full_pattern.frame_skip == 2
+    assert full_pattern.frame_stack == 8
     assert full_pattern.task["success_stage"] == "item"
     assert full_pattern.task["item_field"] == "dungeon_stone_beak"
     assert full_pattern.task["hint_dialog_id"] == 0x280

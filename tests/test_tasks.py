@@ -10,6 +10,7 @@ from zelda_env.tasks.entity_task import DefeatEntitiesTask
 from zelda_env.tasks.exit_task import DefeatAndExitTask
 from zelda_env.tasks.key_task import KillAndCollectTask
 from zelda_env.tasks.pattern_task import MatchPatternAndCollectItemTask
+from zelda_env.tasks.rolling_bones_task import RollingBonesTask
 from zelda_env.tasks.switch_task import PressSwitchOpenChestTask
 
 
@@ -58,6 +59,7 @@ def _state(
     switch_hold=0,
     x=82,
     y=127,
+    z=0,
     room_event_executed=0,
     rupees=0,
     stone_beak=0,
@@ -78,6 +80,7 @@ def _state(
             "pit_slipping_counter": pit_counter,
             "x": x,
             "y": y,
+            "z": z,
         },
         "progress": {"small_keys": keys, "rupees": rupees},
         "inventory": {
@@ -120,6 +123,21 @@ def _three_of_a_kind(states=(0, 0, 0), patterns=(0, 0, 0)):
         for slot, state, pattern in zip(
             (0, 3, 4), states, patterns, strict=True
         )
+    ]
+
+
+def _rolling_bones(bar_x=104, bar_state=0, boss_health=8):
+    return [
+        {"slot": 2, "type": 0x61, "health": 1, "x": 80, "y": 72},
+        {"slot": 4, "type": 0x81, "health": boss_health, "x": 124, "y": 64},
+        {
+            "slot": 5,
+            "type": 0x82,
+            "health": 1,
+            "state": bar_state,
+            "x": bar_x,
+            "y": 64,
+        },
     ]
 
 
@@ -181,6 +199,100 @@ def test_combat_shaping_rewards_active_approach_and_target_damage():
     idle_state = _state(entities=[target_moved_closer], x=44, y=48)
     idle = task.step(approached_state, idle_state, [])
     assert "target_approach" not in idle.info["reward_signals"]
+
+
+def test_rolling_bones_rewards_one_airborne_crossing_per_bar_pass():
+    reward = {
+        **BASE_REWARD,
+        "bar_dodged": 0.25,
+    }
+    task = RollingBonesTask(
+        [0x81],
+        expected_target_count=1,
+        max_rewarded_bar_dodges=3,
+        reward=reward,
+    )
+    initial = _state(entities=_rolling_bones(bar_x=104), room=0x11, x=80)
+    reset_info = task.reset(initial)
+
+    assert reset_info["target_slots"] == [4]
+    assert reset_info["bar_slots"] == [5]
+
+    crossed = _state(
+        entities=_rolling_bones(bar_x=72, bar_state=1),
+        room=0x11,
+        x=80,
+        z=8,
+    )
+    dodged = task.step(initial, crossed, [])
+    assert dodged.info["reward_terms"]["bar_dodged"] == 0.25
+    assert dodged.info["bar_dodges"] == 1
+    assert dodged.info["rewarded_bar_dodges"] == 1
+    assert dodged.info["jumps_started"] == 1
+
+    still_rolling = _state(
+        entities=_rolling_bones(bar_x=64, bar_state=1),
+        room=0x11,
+        x=80,
+        z=6,
+    )
+    same_pass = task.step(crossed, still_rolling, [])
+    assert "bar_dodged" not in same_pass.info["reward_signals"]
+    assert same_pass.info["bar_dodges"] == 1
+
+    resting = _state(
+        entities=_rolling_bones(bar_x=64), room=0x11, x=80
+    )
+    task.step(still_rolling, resting, [])
+    next_pass = _state(
+        entities=_rolling_bones(bar_x=88, bar_state=1),
+        room=0x11,
+        x=80,
+        z=8,
+    )
+    dodged_again = task.step(resting, next_pass, [])
+    assert dodged_again.info["reward_terms"]["bar_dodged"] == 0.25
+    assert dodged_again.info["bar_dodges"] == 2
+
+
+def test_rolling_bones_does_not_reward_grounded_or_damaging_crossing():
+    task = RollingBonesTask(
+        [0x81],
+        expected_target_count=1,
+        reward={**BASE_REWARD, "bar_dodged": 0.25},
+    )
+    initial = _state(entities=_rolling_bones(bar_x=104), room=0x11, x=80)
+    task.reset(initial)
+
+    grounded = _state(
+        entities=_rolling_bones(bar_x=72, bar_state=1), room=0x11, x=80
+    )
+    result = task.step(initial, grounded, [])
+    assert "bar_dodged" not in result.info["reward_signals"]
+
+    task.reset(initial)
+    airborne_but_hit = _state(
+        entities=_rolling_bones(bar_x=72, bar_state=1),
+        room=0x11,
+        x=80,
+        z=8,
+        health=20,
+    )
+    result = task.step(
+        initial,
+        airborne_but_hit,
+        [{"type": "player_damaged", "data": {"amount": 4}}],
+    )
+    assert "bar_dodged" not in result.info["reward_signals"]
+    assert result.info["bar_dodges"] == 0
+
+
+def test_rolling_bones_requires_exactly_one_bar_at_reset():
+    task = RollingBonesTask([0x81], reward={**BASE_REWARD, "bar_dodged": 0.25})
+    boss_only = [entity for entity in _rolling_bones() if entity["type"] != 0x82]
+
+    with pytest.raises(ValueError, match="found 0 rolling bars, expected 1"):
+        task.reset(_state(entities=boss_only, room=0x11))
 
 
 def test_key_task_waits_for_collection_after_targets_are_removed():
@@ -747,6 +859,150 @@ def _pattern_reward():
         "item_collected": 5.0,
         "dialog_completed": 1.0,
     }
+
+
+def _guided_pattern_reward():
+    return {
+        "step": -0.001,
+        "damage_taken": -0.02,
+        "player_died": -2.0,
+        "premature_room_exit": -1.0,
+        "pattern_anchor_set": 0.05,
+        "pattern_consistent_freeze": 0.5,
+        "pattern_prefix_mismatch": -0.1,
+        "pattern_matched": 1.0,
+        "all_targets_cleared": 1.0,
+    }
+
+
+def test_guided_pattern_uses_first_freeze_as_anchor_and_fails_fast():
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        success_stage="pattern",
+        anchor_shaping=True,
+        terminate_on_prefix_mismatch=True,
+        item_field="dungeon_stone_beak",
+        reward=_guided_pattern_reward(),
+    )
+    initial = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.reset(initial)
+
+    anchor = _state(
+        entities=_three_of_a_kind((2, 0, 0), (2, 0, 0)), room=0x0A
+    )
+    anchored = task.step(initial, anchor, [])
+    assert not anchored.terminated
+    assert anchored.info["reward_terms"]["pattern_anchor_set"] == 0.05
+    assert anchored.info["pattern_anchor_sets"] == 1
+
+    wrong = _state(
+        entities=_three_of_a_kind((2, 2, 0), (2, 1, 0)), room=0x0A
+    )
+    mismatched = task.step(anchor, wrong, [])
+    assert mismatched.terminated
+    assert not mismatched.info["success"]
+    assert mismatched.info["failure"] == "pattern_prefix_mismatch"
+    assert mismatched.info["reward_terms"]["pattern_prefix_mismatch"] == -0.1
+    assert mismatched.info["pattern_prefix_mismatches"] == 1
+    assert "pattern_match_progress" not in mismatched.info["reward_signals"]
+
+
+def test_guided_pattern_does_not_reward_a_majority_after_prefix_mismatch():
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        success_stage="pattern",
+        anchor_shaping=True,
+        item_field="dungeon_stone_beak",
+        reward=_guided_pattern_reward(),
+    )
+    initial = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.reset(initial)
+    anchor = _state(
+        entities=_three_of_a_kind((2, 0, 0), (0, 0, 0)), room=0x0A
+    )
+    task.step(initial, anchor, [])
+    wrong_pair = _state(
+        entities=_three_of_a_kind((2, 2, 0), (0, 1, 0)), room=0x0A
+    )
+    task.step(anchor, wrong_pair, [])
+    wrong_majority = _state(
+        entities=_three_of_a_kind((2, 2, 2), (0, 1, 1)), room=0x0A
+    )
+
+    result = task.step(wrong_pair, wrong_majority, [])
+
+    assert result.info["best_pattern_match"] == 2
+    assert result.info["pattern_consistent_freezes"] == 0
+    assert result.info["pattern_prefix_mismatches"] == 1
+    assert "pattern_consistent_freeze" not in result.info["reward_signals"]
+    assert "pattern_match_progress" not in result.info["reward_signals"]
+
+
+def test_guided_pattern_rewards_each_freeze_matching_the_anchor():
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        success_stage="pattern",
+        anchor_shaping=True,
+        item_field="dungeon_stone_beak",
+        reward=_guided_pattern_reward(),
+    )
+    initial = _state(entities=_three_of_a_kind(), room=0x0A)
+    task.reset(initial)
+    one = _state(
+        entities=_three_of_a_kind((2, 0, 0), (3, 0, 0)), room=0x0A
+    )
+    task.step(initial, one, [])
+    two = _state(
+        entities=_three_of_a_kind((2, 2, 0), (3, 3, 0)), room=0x0A
+    )
+    second = task.step(one, two, [])
+    assert second.info["reward_terms"]["pattern_consistent_freeze"] == 0.5
+
+    three = _state(
+        entities=_three_of_a_kind((2, 2, 2), (3, 3, 3)), room=0x0A
+    )
+    third = task.step(two, three, [])
+    assert third.info["reward_terms"]["pattern_consistent_freeze"] == 0.5
+    assert third.info["reward_terms"]["pattern_matched"] == 1.0
+    assert third.info["pattern_consistent_freezes"] == 2
+
+
+def test_guided_pattern_can_continue_from_a_reset_time_anchor():
+    task = MatchPatternAndCollectItemTask(
+        [0x90],
+        expected_target_count=3,
+        success_stage="pattern",
+        anchor_shaping=True,
+        item_field="dungeon_stone_beak",
+        reward=_guided_pattern_reward(),
+    )
+    initial = _state(
+        entities=_three_of_a_kind((2, 0, 0), (2, 0, 0)), room=0x0A
+    )
+    task.reset(initial)
+    matching = _state(
+        entities=_three_of_a_kind((2, 2, 0), (2, 2, 0)), room=0x0A
+    )
+
+    result = task.step(initial, matching, [])
+
+    assert "pattern_anchor_set" not in result.info["reward_signals"]
+    assert result.info["reward_terms"]["pattern_consistent_freeze"] == 0.5
+
+
+def test_prefix_mismatch_termination_requires_anchor_shaping():
+    with pytest.raises(
+        ValueError, match="terminate_on_prefix_mismatch requires anchor_shaping"
+    ):
+        MatchPatternAndCollectItemTask(
+            [0x90],
+            terminate_on_prefix_mismatch=True,
+            item_field="dungeon_stone_beak",
+            reward=_guided_pattern_reward(),
+        )
 
 
 def test_pattern_progress_is_episode_bounded_and_mismatch_is_penalized():

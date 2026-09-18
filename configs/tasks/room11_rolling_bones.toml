@@ -1,0 +1,19 @@
+kind = "rolling_bones"
+target_types = [129]         # ENTITY_ROLLING_BONES
+expected_target_count = 1
+bar_type = 130               # ENTITY_ROLLING_BONES_BAR
+expected_bar_count = 1
+bar_crossing_tolerance = 12
+max_rewarded_bar_dodges = 3
+
+[reward]
+step = -0.001
+damage_taken = -0.05
+player_died = -2.0
+premature_room_exit = -1.0
+combat_step = -0.001
+target_approach = 0.003
+target_damaged = 0.25
+bar_dodged = 0.25
+target_defeated = 3.0
+all_targets_cleared = 2.0
